@@ -183,6 +183,11 @@ lemma table_cap_ref_max_free_index_upd[simp,Tcb_AI_asms]:
   "table_cap_ref (max_free_index_update cap) = table_cap_ref cap"
   by (simp add: free_index_update_def table_cap_ref_def split: cap.splits)
 
+lemma activate_idle_sa_resume[Tcb_AI_asms]:
+  "\<lbrace>sa_resume\<rbrace>
+     arch_activate_idle_thread thread
+   \<lbrace>\<lambda>rv. sa_resume\<rbrace>"
+  by (simp add: arch_activate_idle_thread_def)
 
 interpretation Tcb_AI_1? : Tcb_AI_1
   where is_cnode_or_valid_arch = is_cnode_or_valid_arch

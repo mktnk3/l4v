@@ -107,6 +107,12 @@ lemma schedule_invs[wp]: "\<lbrace>invs\<rbrace> Schedule_A.schedule \<lbrace>\<
          | wpc)+
   done
 
+lemma schedule_ct_schedulable[wp]: "\<lbrace>\<top>\<rbrace> Schedule_A.schedule \<lbrace>\<lambda>rv. ct_schedulable\<rbrace>"
+sorry
+
+lemma schedule_sa_resume[wp]: "\<lbrace>\<top>\<rbrace> Schedule_A.schedule \<lbrace>\<lambda>rv. sa_resume\<rbrace>"
+sorry
+
 lemma invs_domain_time_update[simp]:
   "invs (domain_time_update f s) = invs s"
   by (simp add: invs_def valid_state_def cur_sc_tcb_def)
@@ -1601,9 +1607,8 @@ lemma handle_invocation_not_blocking_not_calling_first_phase_ct_active[wp]:
 
 lemma he_invs[wp]:
   "\<And>e.
-    \<lbrace>\<lambda>s. invs s \<and> (e \<noteq> Interrupt \<longrightarrow> ct_running s) \<and>
-         scheduler_action s = resume_cur_thread \<and>
-         is_schedulable_bool (cur_thread s) s\<rbrace>
+    \<lbrace>\<lambda>s. invs s \<and> (e \<noteq> Interrupt \<longrightarrow> (ct_running s \<and> ct_schedulable s)) \<and>
+         scheduler_action s = resume_cur_thread\<rbrace>
       handle_event e
     \<lbrace>\<lambda>_. invs :: 'state_ext state \<Rightarrow> bool\<rbrace>"
   apply (case_tac e, simp_all)

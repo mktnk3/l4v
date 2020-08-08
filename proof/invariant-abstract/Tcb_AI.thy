@@ -15,6 +15,12 @@ requalify_facts
 
 end
 
+abbreviation
+  "ct_schedulable s \<equiv> is_schedulable_bool (cur_thread s) s "
+
+abbreviation
+  "sa_resume s \<equiv> scheduler_action s = resume_cur_thread"
+
 locale Tcb_AI_1 =
   fixes state_ext_t :: "'state_ext::state_ext itself"
   fixes is_cnode_or_valid_arch :: "cap \<Rightarrow> bool"
@@ -46,6 +52,8 @@ locale Tcb_AI_1 =
                 finalise_cap cap fin \<lbrace>\<lambda>rv s. \<forall>cp \<in> ran (caps_of_state s). P cp\<rbrace>"
   assumes table_cap_ref_max_free_index_upd[simp]: (* reordered to resolve dependency in tc_invs *)
   "\<And>cap. table_cap_ref (max_free_index_update cap) = table_cap_ref cap"
+  assumes arch_activate_idle_thread_sa_resume[wp]:
+   "\<And>t. arch_activate_idle_thread t \<lbrace>\<lambda>s::'state_ext state. sa_resume s\<rbrace>"
 
 lemma set_consumed_ct_in_state[wp]: "\<lbrace>\<lambda>s. ct_in_state P s\<rbrace> set_consumed a buf \<lbrace>\<lambda>_ s. ct_in_state P s\<rbrace>"
   by (rule ct_in_state_thread_state_lift) wpsimp+
@@ -54,23 +62,132 @@ lemma complete_yield_to_ct_in_state[wp]:
   "\<lbrace>\<lambda>s. ct_in_state P s\<rbrace> complete_yield_to tptr \<lbrace>\<lambda>_ s. ct_in_state P s\<rbrace>"
   by (rule ct_in_state_thread_state_lift) wpsimp+
 
+lemma sts_sa_resume[wp]:
+  "\<lbrace>sa_resume and ct_schedulable\<rbrace>
+           set_thread_state thread Running
+           \<lbrace>\<lambda>rv. sa_resume\<rbrace>"
+  unfolding set_thread_state_def set_thread_state_act_def set_scheduler_action_def
+  apply (wpsimp wp: is_schedulable_wp set_object_wp)
+  by (clarsimp simp: is_schedulable_bool_def get_tcb_def is_sc_active_def in_release_queue_def
+              split: option.splits if_split_asm kernel_object.split_asm)
+
+lemma sts_ct_schedulable[wp]:
+  "set_thread_state thread Running \<lbrace>ct_schedulable\<rbrace>"
+  unfolding set_thread_state_def set_thread_state_act_def
+  apply (wpsimp wp: is_schedulable_wp set_object_wp
+simp:   set_scheduler_action_def)
+apply (clarsimp simp: is_schedulable_bool_def get_tcb_def is_sc_active_def in_release_queue_def
+split: option.split_asm kernel_object.split_asm)
+apply (intro conjI impI; clarsimp simp: is_sc_active_def in_release_queue_def)
+done
+
+lemma as_user_is_schedulable_bool[wp]:
+  "as_user tptr f \<lbrace>is_schedulable_bool tp\<rbrace>"
+  apply (wpsimp wp: set_object_wp simp: as_user_def)
+apply (fastforce simp: get_tcb_def is_schedulable_bool_def is_sc_active_def in_release_queue_def
+split: option.split_asm kernel_object.split_asm)
+  done
+
+lemma as_user_ct_schedulable[wp]:
+  "as_user tptr f \<lbrace>ct_schedulable\<rbrace>"
+  by (wps | wp)+
+
+lemma sched_context_update_consumed_is_schedulable_bool[wp]:
+  "sched_context_update_consumed scp \<lbrace>is_schedulable_bool tp\<rbrace>"
+  unfolding sched_context_update_consumed_def
+  apply (wpsimp simp: update_sched_context_def is_schedulable_bool_def wp: set_object_wp get_object_wp)
+  apply (fastforce simp: obj_at_def get_tcb_def is_sc_active_def in_release_queue_def
+                 split: option.splits kernel_object.splits)
+  done
+
+lemma dmo_aligned[wp]:
+  "do_machine_op f \<lbrace>is_schedulable_bool tp\<rbrace>"
+  apply (simp add: do_machine_op_def split_def)
+  apply (wp select_wp)
+  by (clarsimp simp: is_schedulable_bool_def get_tcb_def is_sc_active_def in_release_queue_def
+split: option.split_asm)
+
+crunches set_message_info, store_word_offs
+  for is_schedulable_bool[wp]: "is_schedulable_bool tp"
+  and ct_schedulable[wp]: ct_schedulable
+  (wp: crunch_wps simp: crunch_simps ignore: do_machine_op)
+
+lemma set_mrs_is_schedulable_bool[wp]:
+  "set_mrs thread buf msgs \<lbrace>is_schedulable_bool tp\<rbrace>"
+  unfolding set_mrs_def
+  apply (simp add: set_mrs_redux zipWithM_x_mapM split_def
+                   store_word_offs_def
+             cong: option.case_cong
+              del: upt.simps)
+  apply (wpsimp wp: mapM_wp' thread_set_wp)
+  apply (fastforce simp: is_schedulable_bool_def get_tcb_def is_sc_active_def in_release_queue_def
+ split: option.split_asm kernel_object.split_asm)
+  done
+
+lemma set_mrs_ct_schedulable[wp]:
+  "set_mrs thread buf msgs \<lbrace>ct_schedulable\<rbrace>"
+  by (wps | wp)+
+
+lemma set_consumed_is_schedulable_bool[wp]:
+  "set_consumed scp args \<lbrace>is_schedulable_bool tp\<rbrace>"
+  by (wpsimp simp: set_consumed_def)
+
+lemma sched_context_update_consumed_ct_schedulable[wp]:
+  "sched_context_update_consumed scp \<lbrace>ct_schedulable\<rbrace>"
+  unfolding sched_context_update_consumed_def
+  apply (wpsimp simp: update_sched_context_def is_schedulable_bool_def wp: set_object_wp get_object_wp)
+  apply (fastforce simp: obj_at_def get_tcb_def is_sc_active_def in_release_queue_def
+                 split: option.splits kernel_object.splits)
+  done
+
+lemma set_tcb_obj_ref_ct_schedulable[wp]:
+  "set_tcb_obj_ref tcb_yield_to_update tp new \<lbrace>ct_schedulable\<rbrace>"
+  apply (wpsimp wp: set_tcb_obj_ref_wp)
+  by (fastforce simp: is_schedulable_bool_def obj_at_def get_tcb_def
+        is_sc_active_def in_release_queue_def
+   split: option.split_asm kernel_object.split_asm)
+
+lemma update_sc_yf_ct_schedulable[wp]:
+  "\<lbrace>ct_schedulable\<rbrace>
+    update_sched_context x (sc_yield_from_update f)
+   \<lbrace>\<lambda>rv. ct_schedulable\<rbrace>"
+  by (wpsimp simp: update_sched_context_def wp: get_object_wp set_object_wp)
+     (fastforce simp: is_schedulable_bool_def obj_at_def get_tcb_def
+        is_sc_active_def in_release_queue_def
+split: option.splits kernel_object.split_asm)
+
+lemma set_consumed_ct_schedulable[wp]:
+  "set_consumed scp args \<lbrace>ct_schedulable\<rbrace>"
+  by (wpsimp | wps)+
+
+lemma complete_yield_to_ct_schedulable[wp]:
+  "complete_yield_to thread \<lbrace>ct_schedulable\<rbrace>"
+  by (wpsimp wp: hoare_drop_imp simp: complete_yield_to_def maybeM_def)
+
+crunches as_user, complete_yield_to
+  for sa_resume[wp]: sa_resume
+  (wp: crunch_wps simp: crunch_simps)
+
 lemma (in Tcb_AI_1) activate_invs:
-  "\<lbrace>(invs::'state_ext state \<Rightarrow> bool)\<rbrace> activate_thread \<lbrace>\<lambda>rv s. invs s \<and> (ct_running s \<or> ct_idle s)\<rbrace>"
+  "\<lbrace>(invs::'state_ext state \<Rightarrow> bool) and sa_resume and (\<lambda>s. ct_schedulable s \<or> ct_idle s)\<rbrace>
+    activate_thread \<lbrace>\<lambda>rv s. invs s \<and> sa_resume s \<and> ((ct_running s  \<and> ct_schedulable s) \<or> ct_idle s)\<rbrace>"
   apply (unfold activate_thread_def get_tcb_obj_ref_def)
   apply (rule hoare_seq_ext [OF _ gets_sp])
   apply (rule hoare_seq_ext [OF _ thread_get_sp])
   apply (case_tac yt_opt, simp)
    apply (rule hoare_seq_ext [OF _ gts_sp])
-   apply (rule_tac Q="st_tcb_at ((=) x) thread and invs and (\<lambda>s. cur_thread s = thread)" in hoare_weaken_pre)
+   apply (rule_tac Q="st_tcb_at ((=) x) thread and invs and sa_resume and
+(\<lambda>s. \<not> idle x \<longrightarrow> ct_schedulable s) and (\<lambda>s. cur_thread s = thread)" in hoare_weaken_pre)
     apply (rename_tac state)
     apply (case_tac state; simp)
       apply wp
       apply (clarsimp elim!: pred_tcb_weakenE
-                       simp: ct_in_state_def)
-     apply (rule_tac Q="\<lambda>rv. invs and ct_running" in hoare_post_imp, simp)
+                       simp: ct_in_state_def pred_tcb_at_eq_commute)
+     apply (rule_tac Q="\<lambda>rv. invs and ct_running and ct_schedulable and sa_resume" in hoare_post_imp, simp)
      apply (rule hoare_pre)
-      apply (wp sts_invs_minor ct_in_state_set)
+      apply (wp sts_invs_minor ct_in_state_set sts_ct_schedulable)
         apply simp
+   apply (wpsimp wp: sts_ct_schedulable sts_sa_resume)
        apply (simp)+
        apply (wp hoare_post_imp [OF disjI1]
             | assumption
@@ -79,23 +196,28 @@ lemma (in Tcb_AI_1) activate_invs:
                 elim!: st_tcb_ex_cap pred_tcb_weakenE
                        fault_tcbs_valid_states_active,
             auto simp: st_tcb_def2 pred_tcb_at_def obj_at_def)[1]
-    apply (rule_tac Q="\<lambda>rv. invs and ct_idle" in hoare_post_imp, simp)
+    apply (rule_tac Q="\<lambda>rv. sa_resume and (invs and ct_idle)" in hoare_post_imp, simp)
     apply (wp activate_idle_invs hoare_post_imp [OF disjI2])
     apply (clarsimp simp: ct_in_state_def elim!: pred_tcb_weakenE)
-   apply clarsimp
+  apply (simp, elim conjE)
+apply (erule disjE; clarsimp simp: ct_in_state_def pred_tcb_at_def obj_at_def)
   apply (rule hoare_seq_ext)
    apply (rule hoare_K_bind)
    apply (rule hoare_seq_ext [OF _ gts_sp])
-   apply (rule_tac Q="st_tcb_at ((=) state) thread and invs and (\<lambda>s. cur_thread s = thread)" in hoare_weaken_pre)
+   apply (rule_tac Q="st_tcb_at ((=) state) thread and invs and
+ (\<lambda>s. \<not> idle state \<longrightarrow> ct_schedulable s)
+ and sa_resume and
+ (\<lambda>s. cur_thread s = thread)" in hoare_weaken_pre)
     apply (rename_tac state)
     apply (case_tac state; simp)
       apply wp
       apply (clarsimp elim!: pred_tcb_weakenE
       simp: ct_in_state_def)
-     apply (rule_tac Q="\<lambda>rv. invs and ct_running" in hoare_post_imp, simp)
+     apply (rule_tac Q="\<lambda>rv. invs and ct_running and ct_schedulable and sa_resume" in hoare_post_imp, simp)
      apply (rule hoare_pre)
       apply (wp sts_invs_minor ct_in_state_set)
         apply simp
+   apply (wpsimp wp: sts_ct_schedulable sts_sa_resume)
        apply (simp)+
        apply (wp  hoare_post_imp [OF disjI1] | assumption
                | clarsimp elim!: st_tcb_weakenE)+
@@ -103,7 +225,7 @@ lemma (in Tcb_AI_1) activate_invs:
                 elim!: st_tcb_ex_cap pred_tcb_weakenE
                        fault_tcbs_valid_states_active,
             auto simp: st_tcb_def2 pred_tcb_at_def obj_at_def)[1]
-    apply (rule_tac Q="\<lambda>rv. invs and ct_idle" in hoare_post_imp, simp)
+    apply (rule_tac Q="\<lambda>rv. sa_resume and (invs and ct_idle)" in hoare_post_imp, simp)
     apply (wp activate_idle_invs hoare_post_imp [OF disjI2])
     apply (clarsimp simp: ct_in_state_def elim!: pred_tcb_weakenE)
    apply clarsimp
