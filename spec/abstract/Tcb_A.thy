@@ -26,20 +26,6 @@ end
 
 section "Activating Threads"
 
-text \<open>Reactivate a thread if it is not already running.\<close>
-definition
-  restart :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad" where
- "restart thread \<equiv> do
-    state \<leftarrow> get_thread_state thread;
-    sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context thread;
-    when (\<not> runnable state \<and> \<not> idle state) $ do
-      cancel_ipc thread;
-      set_thread_state thread Restart;
-      maybeM sched_context_resume sc_opt;
-      test_possible_switch_to thread
-    od
-  od"
-
 text \<open>This action is performed at the end of a system call immediately before
 control is restored to a used thread. If it needs to be restarted then its
 program counter is set to the operation it was performing rather than the next
@@ -160,104 +146,6 @@ where
               cur \<leftarrow> liftE $ gets cur_thread;
               liftE $ when (target = cur) reschedule_required
             odE"
-
-text \<open>TCB capabilities confer authority to perform seven actions. A thread can
-request to yield its timeslice to another, to suspend or resume another, to
-reconfigure another thread, or to copy register sets into, out of or between
-other threads.\<close>
-fun
-  invoke_tcb :: "tcb_invocation \<Rightarrow> (data list, 'z::state_ext) p_monad"
-where
-  "invoke_tcb (Suspend thread) = liftE (do suspend thread; return [] od)"
-| "invoke_tcb (Resume thread) = liftE (do restart thread; return [] od)"
-
-| "invoke_tcb (ThreadControlCaps target slot fault_handler timeout_handler croot vroot buffer)
-   = doE
-    install_tcb_cap target slot 3 fault_handler;
-    install_tcb_cap target slot 4 timeout_handler;
-    install_tcb_cap target slot 0 croot;
-    install_tcb_cap target slot 1 vroot;
-    install_tcb_frame_cap target slot buffer;
-    returnOk []
-  odE"
-
-| "invoke_tcb (ThreadControlSched target slot fault_handler mcp priority sc)
-   = doE
-    install_tcb_cap target slot 3 fault_handler;
-    liftE $ maybeM (\<lambda>(newmcp, _). set_mcpriority target newmcp) mcp;
-    liftE $ maybeM (\<lambda>(prio, _). set_priority target prio) priority;
-    liftE $ maybeM (\<lambda>scopt. case scopt of
-                              None \<Rightarrow> maybe_sched_context_unbind_tcb target
-                            | Some sc_ptr \<Rightarrow> maybe_sched_context_bind_tcb sc_ptr target) sc;
-    returnOk []
-  odE"
-
-| "invoke_tcb (CopyRegisters dest src suspend_source resume_target transfer_frame transfer_integer transfer_arch) =
-  (liftE $ do
-    when suspend_source $ suspend src;
-    when resume_target $ restart dest;
-    when transfer_frame $ do
-        mapM_x (\<lambda>r. do
-                v \<leftarrow> as_user src $ getRegister r;
-                as_user dest $ setRegister r v
-        od) frame_registers;
-        pc \<leftarrow> as_user dest getRestartPC;
-        as_user dest $ setNextPC pc
-    od;
-    when transfer_integer $
-        mapM_x (\<lambda>r. do
-                v \<leftarrow> as_user src $ getRegister r;
-                as_user dest $ setRegister r v
-        od) gpRegisters;
-    cur \<leftarrow> gets cur_thread;
-    arch_post_modify_registers cur dest;
-    when (dest = cur) reschedule_required;
-    return []
-  od)"
-
-| "invoke_tcb (ReadRegisters src suspend_source n arch) =
-  (liftE $ do
-    when suspend_source $ suspend src;
-    self \<leftarrow> gets cur_thread;
-    regs \<leftarrow> return (take (unat n) $ frame_registers @ gp_registers);
-    as_user src $ mapM getRegister regs
-  od)"
-
-| "invoke_tcb (WriteRegisters dest resume_target values arch) =
-  (liftE $ do
-    self \<leftarrow> gets cur_thread;
-    b \<leftarrow> arch_get_sanitise_register_info dest;
-    as_user dest $ do
-        zipWithM (\<lambda>r v. setRegister r (sanitise_register b r v))
-            (frameRegisters @ gpRegisters) values;
-        pc \<leftarrow> getRestartPC;
-        setNextPC pc
-    od;
-    arch_post_modify_registers self dest;
-    when resume_target $ restart dest;
-    when (dest = self) reschedule_required;
-    return []
-  od)"
-
-| "invoke_tcb (NotificationControl tcb (Some ntfnptr)) =
-  (liftE $ do
-    bind_notification tcb ntfnptr;
-    return []
-  od)"
-
-| "invoke_tcb (NotificationControl tcb None) =
-  (liftE $ do
-    unbind_notification tcb;
-    return []
-  od)"
-
-| "invoke_tcb (SetTLSBase tcb tls_base) =
-  (liftE $ do
-    as_user tcb $ setRegister tlsBaseRegister tls_base;
-    cur \<leftarrow> gets cur_thread;
-    when (tcb = cur) reschedule_required;
-    return []
-  od)"
 
 definition
   set_domain :: "obj_ref \<Rightarrow> domain \<Rightarrow> (unit, 'z::state_ext) s_monad" where

@@ -877,37 +877,6 @@ where
            tcb_vtable := tcb_vtable captcb,
            tcb_ipcframe := tcb_ipcframe captcb \<rparr>"
 
-section \<open>Invoking CNode capabilities\<close>
-
-text \<open>The CNode capability confers authority to various methods
-which act on CNodes and the capabilities within them. Copies of
-capabilities may be inserted in empty CNode slots by
-Insert. Capabilities may be moved to empty slots with Move or swapped
-with others in a three way rotate by Rotate. A Reply capability stored
-in a thread's last-caller slot may be saved into a regular CNode slot
-with Save.  The Revoke, Delete and Recycle methods may also be
-invoked on the capabilities stored in the CNode.\<close>
-
-definition
-  invoke_cnode :: "cnode_invocation \<Rightarrow> (unit, 'z::state_ext) p_monad" where
-  "invoke_cnode i \<equiv> case i of
-    RevokeCall dest_slot \<Rightarrow> cap_revoke dest_slot
-  | DeleteCall dest_slot \<Rightarrow> cap_delete dest_slot
-  | InsertCall cap src_slot dest_slot \<Rightarrow>
-       without_preemption $ cap_insert cap src_slot dest_slot
-  | MoveCall cap src_slot dest_slot \<Rightarrow>
-       without_preemption $ cap_move cap src_slot dest_slot
-  | RotateCall cap1 cap2 slot1 slot2 slot3 \<Rightarrow>
-       without_preemption $
-       if slot1 = slot3 then
-         cap_swap cap1 slot1 cap2 slot2
-       else
-         do cap_move cap2 slot2 slot3; cap_move cap1 slot1 slot2 od
-  | CancelBadgedSendsCall (EndpointCap ep b R) \<Rightarrow>
-    without_preemption $ when (b \<noteq> 0) $ cancel_badged_sends ep b
-  | CancelBadgedSendsCall _ \<Rightarrow> fail"
-
-
 section "Cap classification used to define invariants"
 
 datatype capclass =

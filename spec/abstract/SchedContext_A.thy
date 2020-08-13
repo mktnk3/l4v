@@ -352,39 +352,6 @@ where
     maybeM complete_yield_to (sc_yield_from sc)
 od"
 
-text \<open>  Bind a TCB to a scheduling context. \<close>
-
-definition
-  test_possible_switch_to :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
-where
-  "test_possible_switch_to tcb_ptr = do
-    sched \<leftarrow> is_schedulable tcb_ptr;
-    when sched $ possible_switch_to tcb_ptr
-  od"
-
-definition
-  sched_context_bind_tcb :: "obj_ref \<Rightarrow> obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
-where
-  "sched_context_bind_tcb sc_ptr tcb_ptr = do
-    set_sc_obj_ref sc_tcb_update sc_ptr (Some tcb_ptr);
-    set_tcb_obj_ref tcb_sched_context_update tcb_ptr (Some sc_ptr);
-    sched_context_resume sc_ptr;
-    sched <- is_schedulable tcb_ptr;
-    when sched $ do
-      tcb_sched_action tcb_sched_enqueue tcb_ptr;
-      reschedule_required
-      od
-  od"
-
-definition
-  maybe_sched_context_bind_tcb :: "obj_ref \<Rightarrow> obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
-where
-  "maybe_sched_context_bind_tcb sc_ptr tcb_ptr = do
-     sc' \<leftarrow> get_tcb_obj_ref tcb_sched_context tcb_ptr;
-     when (sc' \<noteq> Some sc_ptr) $ sched_context_bind_tcb sc_ptr tcb_ptr
-   od"
-
-
 text \<open> Unbind TCB from its scheduling context, if there is one bound. \<close>
 definition
   unbind_from_sc :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"

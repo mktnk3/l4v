@@ -81,7 +81,8 @@ where
 
 text \<open>
   Unbind a TCB from its scheduling context. If the TCB is runnable,
-  remove from the scheduler.
+  remove from the scheduler. No timeout version.
+  (See also: sched_context_unbind_tcb_can_timeout)
 \<close>
 definition
   sched_context_unbind_tcb :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
@@ -100,6 +101,7 @@ where
 text \<open>
   Unbind a TCB from its scheduling context.
   Takes the TCB as argument and calls @{text sched_context_unbind_tcb}.
+  No timeout version.
 \<close>
 definition
   maybe_sched_context_unbind_tcb :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
@@ -405,12 +407,17 @@ definition
      od
    od"
 
+text \<open>Cancel all message operations on threads currently queued within this
+synchronous message endpoint. Threads so queued are placed in the Restart state.
+Once scheduled they will reattempt the operation that previously caused them
+to be queued here.\<close>
 definition
-  restart_thread_if_no_fault :: "obj_ref \<Rightarrow> (unit,'z::state_ext) s_monad"
+  restart_thread_if_schedulable_no_fault :: "obj_ref \<Rightarrow> (unit,'z::state_ext) s_monad"
 where
-  "restart_thread_if_no_fault t \<equiv> do
+  "restart_thread_if_schedulable_no_fault t \<equiv> do
+     sched \<leftarrow> is_schedulable t;
      fault \<leftarrow> thread_get tcb_fault t;
-     if fault = None
+     if (fault = None) \<and> sched
      then do
        set_thread_state t Restart;
        possible_switch_to t
@@ -418,10 +425,6 @@ where
      else set_thread_state t Inactive
    od"
 
-text \<open>Cancel all message operations on threads currently queued within this
-synchronous message endpoint. Threads so queued are placed in the Restart state.
-Once scheduled they will reattempt the operation that previously caused them
-to be queued here.\<close>
 definition
   cancel_all_ipc :: "obj_ref \<Rightarrow> (unit,'z::state_ext) s_monad"
 where
@@ -436,45 +439,11 @@ where
               reply_opt \<leftarrow> case st of BlockedOnReceive _ r_opt _ \<Rightarrow> return r_opt
                                     | _ \<Rightarrow> return None;
               when (reply_opt \<noteq> None) $ reply_unlink_tcb t (the reply_opt);
-              restart_thread_if_no_fault t
+              restart_thread_if_schedulable_no_fault t
             od) $ queue;
          reschedule_required
       od
    od"
-
-text \<open>The badge stored by thread waiting on a message send operation.\<close>
-primrec (nonexhaustive)
-  blocking_ipc_badge :: "thread_state \<Rightarrow> badge"
-where
-  "blocking_ipc_badge (BlockedOnSend t payload) = sender_badge payload"
-
-text \<open>Cancel all message send operations on threads queued in this endpoint
-and using a particular badge.\<close>
-definition
-  cancel_badged_sends :: "obj_ref \<Rightarrow> badge \<Rightarrow> (unit, 'z::state_ext) s_monad"
-where
-  "cancel_badged_sends epptr badge \<equiv> do
-    ep \<leftarrow> get_endpoint epptr;
-    case ep of
-          IdleEP \<Rightarrow> return ()
-        | RecvEP _ \<Rightarrow>  return ()
-        | SendEP queue \<Rightarrow>  do
-            set_endpoint epptr IdleEP;
-            queue' \<leftarrow> (swp filterM queue) (\<lambda> t. do
-                st \<leftarrow> get_thread_state t;
-                if blocking_ipc_badge st = badge then do
-                  restart_thread_if_no_fault t;
-                  return False
-                od
-                else return True
-            od);
-            ep' \<leftarrow> return (case queue' of
-                           [] \<Rightarrow> IdleEP
-                         | _ \<Rightarrow> SendEP queue');
-            set_endpoint epptr ep';
-            reschedule_required
-        od
-  od"
 
 text \<open>Remove the binding between a notification and a TCB. This is avoids double reads
       when calling @{text unbind_notification} from @{text unbind_maybe_notification}
@@ -549,7 +518,7 @@ definition blocked_cancel_ipc ::
      set_thread_state tptr Inactive
    od"
 
-text \<open> Unbind TCB, if there is one bound. \<close>
+text \<open> Unbind TCB, if there is one bound. No timeout version. \<close>
 definition
   sched_context_unbind_all_tcbs :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
 where

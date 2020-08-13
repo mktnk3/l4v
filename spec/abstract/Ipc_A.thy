@@ -153,7 +153,7 @@ where
      msg \<leftarrow> as_user thread $ mapM getRegister exceptionMessage;
      return (3, msg @ [exception, code])
    od)"
-| "make_fault_msg (Timeout badge) thread = (do
+| "make_fault_msg (Timeout badge reason) thread = (do
      tcb \<leftarrow> gets_the $ get_tcb thread;
      case (tcb_sched_context tcb) of None \<Rightarrow> return (5, [badge])
      | Some sc \<Rightarrow> do
@@ -187,7 +187,7 @@ where
          exceptionMessage msg;
      return (label = 0)
    od"
-| "handle_fault_reply (Timeout badge) thread label msg = do
+| "handle_fault_reply (Timeout badge reason) thread label msg = do
      t \<leftarrow> arch_get_sanitise_register_info thread;
      as_user thread $ zipWithM_x
          (\<lambda>r v. setRegister r $ sanitise_register t r v)
@@ -261,7 +261,7 @@ and the thread is willing to block waiting to send then put it in the endpoint
 sending queue.\<close>
 definition
   send_ipc :: "bool \<Rightarrow> bool \<Rightarrow> badge \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow> bool
-                \<Rightarrow> obj_ref \<Rightarrow> obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+                \<Rightarrow> obj_ref \<Rightarrow> obj_ref \<Rightarrow> (obj_ref option, 'z::state_ext) s_monad"
 where
   "send_ipc block call badge can_grant can_grant_reply can_donate thread epptr \<equiv> do
      ep \<leftarrow> get_endpoint epptr;
@@ -272,7 +272,8 @@ where
                                      sender_can_grant = can_grant,
                                      sender_can_grant_reply = can_grant_reply,
                                      sender_is_call = call \<rparr>);
-               set_endpoint epptr $ SendEP [thread]
+               set_endpoint epptr $ SendEP [thread];
+               return None
              od
        | (SendEP queue, True) \<Rightarrow> do
                set_thread_state thread (BlockedOnSend epptr
@@ -281,10 +282,11 @@ where
                                      sender_can_grant_reply = can_grant_reply,
                                      sender_is_call = call\<rparr>);
                qs' \<leftarrow> sort_queue (queue @ [thread]);
-               set_endpoint epptr $ SendEP qs'
+               set_endpoint epptr $ SendEP qs';
+               return None
              od
-       | (IdleEP, False) \<Rightarrow> return ()
-       | (SendEP queue, False) \<Rightarrow> return ()
+       | (IdleEP, False) \<Rightarrow> return None
+       | (SendEP queue, False) \<Rightarrow> return None
        | (RecvEP (dest # queue), _) \<Rightarrow> do
                 set_endpoint epptr $ (case queue of [] \<Rightarrow> IdleEP
                                                      | _ \<Rightarrow> RecvEP queue);
@@ -306,19 +308,139 @@ where
                   thread_sc \<leftarrow> get_tcb_obj_ref tcb_sched_context thread;
                   sched_context_donate (the thread_sc) dest
                 od;
-                new_sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context dest;
+\<comment> \<open>                new_sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context dest;
                 test \<leftarrow> case new_sc_opt of Some scp \<Rightarrow> do
                             sufficient \<leftarrow> get_sc_refill_sufficient scp 0;
                             ready \<leftarrow> get_sc_refill_ready scp;
                             return (sufficient \<and> ready)
                         od
                         | _ \<Rightarrow> return True; \<comment> \<open>why does C allow dest to have no sc?\<close>
-                assert test;
+                assert test;\<close>
                 set_thread_state dest Running;
-                possible_switch_to dest
+                return (Some dest)
               od
        | (RecvEP [], _) \<Rightarrow> fail
    od"
+
+text \<open>timeout fault handling needed for ensure_schedulable\<close>
+
+definition valid_timeout_handler :: "obj_ref \<Rightarrow> (bool, 'z::state_ext) s_monad" where
+  "valid_timeout_handler tptr \<equiv> do
+    tcb \<leftarrow> gets_the $ get_tcb tptr;
+    if is_ep_cap (tcb_timeout_handler tcb)
+    then do
+      ep \<leftarrow> get_endpoint (cap_ep_ptr (tcb_timeout_handler tcb));
+      case ep of
+        RecvEP queue \<Rightarrow> do
+          dest \<leftarrow> return $ hd queue; \<comment>\<open>queue should be non-empty\<close>
+          sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context dest;
+          case sc_opt of None \<Rightarrow> return False
+                       | Some scp \<Rightarrow> do
+                           active \<leftarrow> get_sc_active scp;
+                           ready \<leftarrow> get_sc_refill_ready scp;
+                           return (active \<and> ready)
+                         od
+          od
+       | _ \<Rightarrow> return True
+      od
+    else return False
+  od"
+
+section \<open>Sending Fault Messages 1: handle_timeout\<close>
+
+text \<open>When a thread encounters a fault, retreive its fault handler capability
+and send a fault message.\<close>
+definition
+  send_fault_ipc :: "obj_ref \<Rightarrow> cap \<Rightarrow> fault \<Rightarrow> bool \<Rightarrow> (bool, 'z::state_ext) f_monad"
+where
+  "send_fault_ipc tptr handler_cap fault can_donate \<equiv>
+     (case handler_cap
+       of EndpointCap ref badge rights \<Rightarrow>
+            liftE $ do
+               thread_set (\<lambda>tcb. tcb \<lparr> tcb_fault := Some fault \<rparr>) tptr;
+               unblocked \<leftarrow> send_ipc True False (cap_ep_badge handler_cap)
+                        (AllowGrant \<in> rights) (AllowGrantReply \<in> rights) can_donate tptr
+                        (cap_ep_ptr handler_cap);
+               case unblocked of
+                 Some tp \<Rightarrow> do
+                   sched \<leftarrow> is_schedulable tp;
+                   when sched $ possible_switch_to tp;
+                   return True
+                 od
+               | None \<Rightarrow> return True
+           od
+        | NullCap \<Rightarrow> liftE $ return False
+        | _ \<Rightarrow> fail)"
+
+text \<open>timeout fault\<close>
+definition handle_timeout :: "obj_ref \<Rightarrow> fault \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "handle_timeout tptr ex \<equiv> do
+     tcb \<leftarrow> gets_the $ get_tcb tptr;
+     assert (is_ep_cap (tcb_timeout_handler tcb));
+     send_fault_ipc tptr (tcb_timeout_handler tcb) ex False;
+     return ()
+  od"
+
+
+text \<open>If the thread has a valid timeout fault handler, deliver a fault with
+  the given badge and reason.\<close>
+definition
+  maybe_timeout_fault :: "obj_ref \<Rightarrow> badge \<Rightarrow> reason \<Rightarrow> (unit, 'z::state_ext) s_monad" where
+  "maybe_timeout_fault tptr badge reason \<equiv> do
+    valid \<leftarrow> valid_timeout_handler tptr;
+    if valid
+    then handle_timeout tptr (Timeout badge reason)
+    else
+      when (reason = Exhausted) $ do
+        sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context tptr;
+        scp \<leftarrow> assert_opt sc_opt;
+        active \<leftarrow> get_sc_active scp;
+        assert active;
+        postpone scp
+     od
+ od"
+
+text \<open>Ensure that a thread can be placed in the scheduler with
+  possibleSwitchTo, SCHED_ENQUEUE, or SCHED_APPEND. Faults the thread
+  with a timeout fault or SC unbound fault if its SC would prevent it
+  from being scheduled.
+
+  If this returns true then the thread that was passed in is not
+  modified and satisfies the preconditions of possibleSwitchTo.\<close>
+definition
+  ensure_schedulable :: "obj_ref \<Rightarrow> (bool, 'z::state_ext) s_monad" where
+  "ensure_schedulable tptr \<equiv> do
+     ts \<leftarrow> get_thread_state tptr;
+     assert (runnable ts);
+     inq \<leftarrow> gets $ in_release_queue tptr;
+     assert (\<not> inq);
+     scopt \<leftarrow> get_tcb_obj_ref tcb_sched_context tptr;
+     case scopt of
+       None \<Rightarrow> do
+         maybe_timeout_fault tptr 0 NoSC;
+         return False
+       od
+     | Some scp \<Rightarrow> do
+         active \<leftarrow> get_sc_active scp;
+         sc \<leftarrow> get_sched_context scp;
+         if \<not>active
+         then do
+           maybe_timeout_fault tptr (sc_badge sc) UnConfigured;
+           return False
+         od
+         else do
+           rr \<leftarrow> is_round_robin scp;
+           ready \<leftarrow> get_sc_refill_ready scp;
+           if \<not>rr \<and> \<not>ready
+           then do
+             maybe_timeout_fault tptr (sc_badge sc) Exhausted;
+             return False
+           od
+           else return True
+         od
+       od
+     od"
 
 text \<open>Handle a message receive operation performed on an endpoint by a thread.
 If a sender is waiting then transfer the message, otherwise put the thread in
@@ -353,7 +475,7 @@ where
 
 definition is_timeout_fault :: "fault \<Rightarrow> bool" where
   "is_timeout_fault f \<equiv>
-    (case f of Timeout _ \<Rightarrow> True | _ \<Rightarrow> False)"
+    (case f of Timeout _ _ \<Rightarrow> True | _ \<Rightarrow> False)"
 
 definition
   receive_ipc :: "obj_ref \<Rightarrow> cap \<Rightarrow> bool \<Rightarrow> cap \<Rightarrow> (unit, 'z::state_ext) s_monad"
@@ -421,7 +543,8 @@ where
                 else set_thread_state sender Inactive
               else do
                 set_thread_state sender Running;
-                possible_switch_to sender
+                sched \<leftarrow> ensure_schedulable sender;
+                when sched $ possible_switch_to sender
               \<^cancel>\<open>FIXME RT: the C code has a test here for (refiil_sufficient sender'sc \<or> sender's sc is None)\<close>
               od
             od
@@ -526,35 +649,7 @@ where
                    od
     od"
 
-section \<open>Sending Fault Messages\<close>
-
-text \<open>When a thread encounters a fault, retreive its fault handler capability
-and send a fault message.\<close>
-definition
-  send_fault_ipc :: "obj_ref \<Rightarrow> cap \<Rightarrow> fault \<Rightarrow> bool \<Rightarrow> (bool, 'z::state_ext) f_monad"
-where
-  "send_fault_ipc tptr handler_cap fault can_donate \<equiv>
-     (case handler_cap
-       of EndpointCap ref badge rights \<Rightarrow>
-            liftE $ do
-               thread_set (\<lambda>tcb. tcb \<lparr> tcb_fault := Some fault \<rparr>) tptr;
-               send_ipc True False (cap_ep_badge handler_cap)
-                        (AllowGrant \<in> rights) (AllowGrantReply \<in> rights) can_donate tptr
-                        (cap_ep_ptr handler_cap);
-               return True
-           od
-        | NullCap \<Rightarrow> liftE $ return False
-        | _ \<Rightarrow> fail)"
-
-text \<open>timeout fault\<close>
-definition handle_timeout :: "obj_ref \<Rightarrow> fault \<Rightarrow> (unit, 'z::state_ext) s_monad"
-where
-  "handle_timeout tptr ex \<equiv> do
-     tcb \<leftarrow> gets_the $ get_tcb tptr;
-     assert (is_ep_cap (tcb_timeout_handler tcb));
-     send_fault_ipc tptr (tcb_timeout_handler tcb) ex False;
-     return ()
-  od"
+section \<open>Sending Fault Messages 2: handle_fault\<close>
 
 text \<open>If a fault message cannot be sent then leave the thread inactive.\<close>
 definition
@@ -603,21 +698,9 @@ where
             od;
 
           state \<leftarrow> get_thread_state receiver;
-          sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context receiver;
-          when (sc_opt \<noteq> None \<and> runnable (state)) $ do
-            sc_ptr \<leftarrow> assert_opt sc_opt;
-            sc \<leftarrow> get_sched_context sc_ptr;
-            curtime \<leftarrow> gets cur_time;
-            if sc_refill_ready curtime sc \<and> sc_refill_sufficient 0 sc
-            then possible_switch_to receiver
-            else do
-              tcb \<leftarrow> gets_the $ get_tcb receiver;
-              if is_ep_cap (tcb_timeout_handler tcb) \<and>
-                 ~ (case_option False is_timeout_fault fault)
-              then handle_timeout receiver (Timeout (sc_badge sc))
-              else postpone sc_ptr
-            od
-          od
+          sched <- ensure_schedulable receiver;
+          when (runnable (state) \<and> sched) $
+             possible_switch_to receiver
         od
       | _ \<Rightarrow> return ()
     od)
@@ -650,7 +733,7 @@ where
      tcb \<leftarrow> gets_the $ get_tcb ct;
 
      if canTimeout \<and> (is_ep_cap (tcb_timeout_handler tcb)) then
-       handle_timeout ct (Timeout (sc_badge csc))
+       handle_timeout ct (Timeout (sc_badge csc) Exhausted)
      else if sc_refill_ready curtime csc \<and> sc_refill_sufficient 0 csc then do
      \<comment> \<open>C code assets @{text cur_thread} not to be in ready q at this point\<close>
        d \<leftarrow> thread_get tcb_domain ct;
@@ -768,6 +851,303 @@ where
     od
   od"
 
+
+text \<open>moved from IpcCance_A due to ensure_schedulable dependency\<close>
+
+definition
+  restart_thread_if_no_fault :: "obj_ref \<Rightarrow> (unit,'z::state_ext) s_monad"
+where
+  "restart_thread_if_no_fault t \<equiv> do
+     fault \<leftarrow> thread_get tcb_fault t;
+     if fault = None
+     then do
+       set_thread_state t Restart;
+       sched \<leftarrow> ensure_schedulable t;
+       when sched $ possible_switch_to t
+     od
+     else set_thread_state t Inactive
+   od"
+
+text \<open>The badge stored by thread waiting on a message send operation.\<close>
+primrec (nonexhaustive)
+  blocking_ipc_badge :: "thread_state \<Rightarrow> badge"
+where
+  "blocking_ipc_badge (BlockedOnSend t payload) = sender_badge payload"
+
+text \<open>Cancel all message send operations on threads queued in this endpoint
+and using a particular badge.\<close>
+definition
+  cancel_badged_sends :: "obj_ref \<Rightarrow> badge \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "cancel_badged_sends epptr badge \<equiv> do
+    ep \<leftarrow> get_endpoint epptr;
+    case ep of
+          IdleEP \<Rightarrow> return ()
+        | RecvEP _ \<Rightarrow>  return ()
+        | SendEP queue \<Rightarrow>  do
+            set_endpoint epptr IdleEP;
+            queue' \<leftarrow> (swp filterM queue) (\<lambda> t. do
+                st \<leftarrow> get_thread_state t;
+                if blocking_ipc_badge st = badge then do
+                  restart_thread_if_no_fault t;
+                  return False
+                od
+                else return True
+            od);
+            ep' \<leftarrow> return (case queue' of
+                           [] \<Rightarrow> IdleEP
+                         | _ \<Rightarrow> SendEP queue');
+            set_endpoint epptr ep';
+            reschedule_required
+        od
+  od"
+
+text \<open>
+  Unbind a TCB from its scheduling context. If the TCB is runnable,
+  remove from the scheduler.
+\<close>
+definition
+  sched_context_unbind_tcb_can_timeout :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "sched_context_unbind_tcb_can_timeout sc_ptr = do
+     sc \<leftarrow> get_sched_context sc_ptr;
+     tptr \<leftarrow> assert_opt $ sc_tcb sc;
+     cur \<leftarrow> gets $ cur_thread;
+     when (tptr = cur) $ reschedule_required;
+     tcb_sched_action tcb_sched_dequeue tptr;
+     tcb_release_remove tptr;
+     st \<leftarrow> get_thread_state tptr;
+     when (runnable st) $ maybe_timeout_fault tptr 0 NoSC;
+     set_tcb_obj_ref tcb_sched_context_update tptr None;
+     set_sc_obj_ref sc_tcb_update sc_ptr None
+  od"
+
+text \<open>
+  Unbind a TCB from its scheduling context.
+  Takes the TCB as argument and calls @{text sched_context_unbind_tcb}.
+\<close>
+definition
+  maybe_sched_context_unbind_tcb_can_timeout :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "maybe_sched_context_unbind_tcb_can_timeout target = do
+     sc_ptr_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context target;
+     maybeM sched_context_unbind_tcb_can_timeout sc_ptr_opt
+  od"
+
+text \<open> Unbind TCB, if there is one bound. \<close>
+definition
+  sched_context_unbind_all_tcbs_can_timeout :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "sched_context_unbind_all_tcbs_can_timeout sc_ptr = do
+    sc \<leftarrow> get_sched_context sc_ptr;
+    when (sc_tcb sc \<noteq> None \<and> sc_ptr \<noteq> idle_sc_ptr) $ sched_context_unbind_tcb_can_timeout sc_ptr
+  od"
+
+
+text \<open>moved from SchedContext_A due to ensure_schedulable dependency\<close>
+
+text \<open>  Bind a TCB to a scheduling context. \<close>
+
+definition
+  test_possible_switch_to :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "test_possible_switch_to tcb_ptr = do
+    sched \<leftarrow> ensure_schedulable tcb_ptr;
+    when sched $ possible_switch_to tcb_ptr
+  od"
+
+definition
+  sched_context_bind_tcb :: "obj_ref \<Rightarrow> obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "sched_context_bind_tcb sc_ptr tcb_ptr = do
+    set_sc_obj_ref sc_tcb_update sc_ptr (Some tcb_ptr);
+    set_tcb_obj_ref tcb_sched_context_update tcb_ptr (Some sc_ptr);
+    sched_context_resume sc_ptr;
+    sched <- ensure_schedulable tcb_ptr;
+    when sched $ do
+      tcb_sched_action tcb_sched_enqueue tcb_ptr;
+      reschedule_required
+      od
+  od"
+
+definition
+  maybe_sched_context_bind_tcb :: "obj_ref \<Rightarrow> obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "maybe_sched_context_bind_tcb sc_ptr tcb_ptr = do
+     sc' \<leftarrow> get_tcb_obj_ref tcb_sched_context tcb_ptr;
+     when (sc' \<noteq> Some sc_ptr) $ sched_context_bind_tcb sc_ptr tcb_ptr
+   od"
+
+text \<open>moved from Tcb_A due to ensure_schedulable dependency\<close>
+
+text \<open>Reactivate a thread if it is not already running.\<close>
+definition
+  restart :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad" where
+ "restart thread \<equiv> do
+    state \<leftarrow> get_thread_state thread;
+    sc_opt \<leftarrow> get_tcb_obj_ref tcb_sched_context thread;
+    when (\<not> runnable state \<and> \<not> idle state) $ do
+      cancel_ipc thread;
+      set_thread_state thread Restart;
+      maybeM sched_context_resume sc_opt;
+      test_possible_switch_to thread
+    od
+  od"
+
+text \<open>TCB capabilities confer authority to perform seven actions. A thread can
+request to yield its timeslice to another, to suspend or resume another, to
+reconfigure another thread, or to copy register sets into, out of or between
+other threads.\<close>
+fun
+  invoke_tcb :: "tcb_invocation \<Rightarrow> (data list, 'z::state_ext) p_monad"
+where
+  "invoke_tcb (Suspend thread) = liftE (do suspend thread; return [] od)"
+| "invoke_tcb (Resume thread) = liftE (do restart thread; return [] od)"
+
+| "invoke_tcb (ThreadControlCaps target slot fault_handler timeout_handler croot vroot buffer)
+   = doE
+    install_tcb_cap target slot 3 fault_handler;
+    install_tcb_cap target slot 4 timeout_handler;
+    install_tcb_cap target slot 0 croot;
+    install_tcb_cap target slot 1 vroot;
+    install_tcb_frame_cap target slot buffer;
+    returnOk []
+  odE"
+
+| "invoke_tcb (ThreadControlSched target slot fault_handler mcp priority sc)
+   = doE
+    install_tcb_cap target slot 3 fault_handler;
+    liftE $ maybeM (\<lambda>(newmcp, _). set_mcpriority target newmcp) mcp;
+    liftE $ maybeM (\<lambda>(prio, _). set_priority target prio) priority;
+    liftE $ maybeM (\<lambda>scopt. case scopt of
+                              None \<Rightarrow> maybe_sched_context_unbind_tcb_can_timeout target
+                            | Some sc_ptr \<Rightarrow> maybe_sched_context_bind_tcb sc_ptr target) sc;
+    returnOk []
+  odE"
+
+| "invoke_tcb (CopyRegisters dest src suspend_source resume_target transfer_frame transfer_integer transfer_arch) =
+  (liftE $ do
+    when suspend_source $ suspend src;
+    when resume_target $ restart dest;
+    when transfer_frame $ do
+        mapM_x (\<lambda>r. do
+                v \<leftarrow> as_user src $ getRegister r;
+                as_user dest $ setRegister r v
+        od) frame_registers;
+        pc \<leftarrow> as_user dest getRestartPC;
+        as_user dest $ setNextPC pc
+    od;
+    when transfer_integer $
+        mapM_x (\<lambda>r. do
+                v \<leftarrow> as_user src $ getRegister r;
+                as_user dest $ setRegister r v
+        od) gpRegisters;
+    cur \<leftarrow> gets cur_thread;
+    arch_post_modify_registers cur dest;
+    when (dest = cur) reschedule_required;
+    return []
+  od)"
+
+| "invoke_tcb (ReadRegisters src suspend_source n arch) =
+  (liftE $ do
+    when suspend_source $ suspend src;
+    self \<leftarrow> gets cur_thread;
+    regs \<leftarrow> return (take (unat n) $ frame_registers @ gp_registers);
+    as_user src $ mapM getRegister regs
+  od)"
+
+| "invoke_tcb (WriteRegisters dest resume_target values arch) =
+  (liftE $ do
+    self \<leftarrow> gets cur_thread;
+    b \<leftarrow> arch_get_sanitise_register_info dest;
+    as_user dest $ do
+        zipWithM (\<lambda>r v. setRegister r (sanitise_register b r v))
+            (frameRegisters @ gpRegisters) values;
+        pc \<leftarrow> getRestartPC;
+        setNextPC pc
+    od;
+    arch_post_modify_registers self dest;
+    when resume_target $ restart dest;
+    when (dest = self) reschedule_required;
+    return []
+  od)"
+
+| "invoke_tcb (NotificationControl tcb (Some ntfnptr)) =
+  (liftE $ do
+    bind_notification tcb ntfnptr;
+    return []
+  od)"
+
+| "invoke_tcb (NotificationControl tcb None) =
+  (liftE $ do
+    unbind_notification tcb;
+    return []
+  od)"
+
+| "invoke_tcb (SetTLSBase tcb tls_base) =
+  (liftE $ do
+    as_user tcb $ setRegister tlsBaseRegister tls_base;
+    cur \<leftarrow> gets cur_thread;
+    when (tcb = cur) reschedule_required;
+    return []
+  od)"
+
+
+text \<open>moved from Schedule_A due to ensure_schedulable dependency\<close>
+
+definition
+  invoke_sched_context :: "sched_context_invocation \<Rightarrow> (unit, 'z::state_ext) s_monad"
+where
+  "invoke_sched_context iv \<equiv> case iv of
+    InvokeSchedContextConsumed sc_ptr args \<Rightarrow> set_consumed sc_ptr args
+  | InvokeSchedContextBind sc_ptr cap \<Rightarrow> (case cap of
+      ThreadCap tcb_ptr \<Rightarrow> sched_context_bind_tcb sc_ptr tcb_ptr
+    | NotificationCap ntfn _ _ \<Rightarrow> sched_context_bind_ntfn sc_ptr ntfn
+    | _ \<Rightarrow> fail)
+  | InvokeSchedContextUnbindObject sc_ptr cap \<Rightarrow> (case cap of
+      ThreadCap _ \<Rightarrow> sched_context_unbind_tcb_can_timeout sc_ptr
+    | NotificationCap _ _ _ \<Rightarrow> sched_context_unbind_ntfn sc_ptr
+    | _ \<Rightarrow> fail)
+  | InvokeSchedContextUnbind sc_ptr cap \<Rightarrow> do
+      sched_context_unbind_all_tcbs_can_timeout sc_ptr;
+      sched_context_unbind_ntfn sc_ptr;
+      sched_context_unbind_reply sc_ptr
+    od
+  | InvokeSchedContextYieldTo sc_ptr args \<Rightarrow>
+      sched_context_yield_to sc_ptr args"
+
+
+text \<open>moved from CSpace_A due to ensure_schedulable dependency\<close>
+
+section \<open>Invoking CNode capabilities\<close>
+
+text \<open>The CNode capability confers authority to various methods
+which act on CNodes and the capabilities within them. Copies of
+capabilities may be inserted in empty CNode slots by
+Insert. Capabilities may be moved to empty slots with Move or swapped
+with others in a three way rotate by Rotate. A Reply capability stored
+in a thread's last-caller slot may be saved into a regular CNode slot
+with Save.  The Revoke, Delete and Recycle methods may also be
+invoked on the capabilities stored in the CNode.\<close>
+
+definition
+  invoke_cnode :: "cnode_invocation \<Rightarrow> (unit, 'z::state_ext) p_monad" where
+  "invoke_cnode i \<equiv> case i of
+    RevokeCall dest_slot \<Rightarrow> cap_revoke dest_slot
+  | DeleteCall dest_slot \<Rightarrow> cap_delete dest_slot
+  | InsertCall cap src_slot dest_slot \<Rightarrow>
+       without_preemption $ cap_insert cap src_slot dest_slot
+  | MoveCall cap src_slot dest_slot \<Rightarrow>
+       without_preemption $ cap_move cap src_slot dest_slot
+  | RotateCall cap1 cap2 slot1 slot2 slot3 \<Rightarrow>
+       without_preemption $
+       if slot1 = slot3 then
+         cap_swap cap1 slot1 cap2 slot2
+       else
+         do cap_move cap2 slot2 slot3; cap_move cap1 slot1 slot2 od
+  | CancelBadgedSendsCall (EndpointCap ep b R) \<Rightarrow>
+    without_preemption $ when (b \<noteq> 0) $ cancel_badged_sends ep b
+  | CancelBadgedSendsCall _ \<Rightarrow> fail"
 
 
 end

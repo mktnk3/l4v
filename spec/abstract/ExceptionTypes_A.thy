@@ -33,11 +33,17 @@ datatype lookup_failure
      | DepthMismatch nat nat
      | GuardMismatch nat "bool list"
 
+text \<open>Reasons for why a timeout fault occurred \<close>
+datatype reason =
+   NoSC         \<comment>\<open>the thread was scheduled without an SC \<close>
+ | UnConfigured \<comment>\<open>the thread was scheduled with an unconfigured SC\<close>
+ | Exhausted    \<comment>\<open>the thread was scheduled with a SC with no available time.\<close>
+
 datatype fault
          = CapFault obj_ref bool lookup_failure
          | UnknownSyscallException data
          | UserException data data
-         | Timeout data
+         | Timeout data reason
          | ArchFault arch_fault
 
 datatype syscall_error

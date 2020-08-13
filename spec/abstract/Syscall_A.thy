@@ -165,8 +165,14 @@ where
 | "perform_invocation block call can_donate (InvokeEndpoint ep badge can_grant can_grant_reply) =
     (without_preemption $ do
        thread \<leftarrow> gets cur_thread;
-       send_ipc block call badge can_grant can_grant_reply can_donate thread ep;
-       return []
+       ptr \<leftarrow> send_ipc block call badge can_grant can_grant_reply can_donate thread ep;
+      case ptr of
+        None \<Rightarrow> return []
+      | Some t \<Rightarrow> do
+          sched \<leftarrow> ensure_schedulable t;
+          when sched $ possible_switch_to t;
+          return []
+        od
      od)"
 
 | "perform_invocation _ _ _ (InvokeNotification ep badge) =
@@ -332,7 +338,10 @@ definition
               else flt)
            | _ \<Rightarrow> flt
       odE
-      <catch> handle_fault thread
+      <catch> handle_fault thread;
+   st \<leftarrow> get_thread_state thread;
+   sched \<leftarrow> ensure_schedulable thread;
+   when (runnable st \<and> \<not>sched) $ reschedule_required
    od"
 
 section \<open>Top-level event handling\<close>
