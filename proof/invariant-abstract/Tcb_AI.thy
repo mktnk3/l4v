@@ -201,9 +201,18 @@ lemma (in Tcb_AI_1) activate_invs:
     apply (clarsimp simp: ct_in_state_def elim!: pred_tcb_weakenE)
   apply (simp, elim conjE)
 apply (erule disjE; clarsimp simp: ct_in_state_def pred_tcb_at_def obj_at_def)
-  apply (rule hoare_seq_ext)
-   apply (rule hoare_K_bind)
+
+apply simp
+thm hoare_seq_ext
+  apply (rule_tac B="\<lambda>_. 
+        (invs and
+         (\<lambda>s. scheduler_action s = resume_cur_thread) and
+         (\<lambda>s. is_schedulable_bool (cur_thread s) s \<or>
+               ct_in_state (\<lambda>st. st = IdleThreadState) s) and
+         (\<lambda>s. cur_thread s = thread))" in hoare_seq_ext[rotated])
+  apply (wpsimp wp: complete_yield_to_invs  hoare_vcg_disj_lift)
    apply (rule hoare_seq_ext [OF _ gts_sp])
+  apply (rename_tac state)
    apply (rule_tac Q="st_tcb_at ((=) state) thread and invs and
  (\<lambda>s. \<not> idle state \<longrightarrow> ct_schedulable s)
  and sa_resume and
@@ -228,9 +237,8 @@ apply (erule disjE; clarsimp simp: ct_in_state_def pred_tcb_at_def obj_at_def)
     apply (rule_tac Q="\<lambda>rv. sa_resume and (invs and ct_idle)" in hoare_post_imp, simp)
     apply (wp activate_idle_invs hoare_post_imp [OF disjI2])
     apply (clarsimp simp: ct_in_state_def elim!: pred_tcb_weakenE)
-   apply clarsimp
-   apply simp
-  apply (wpsimp wp: complete_yield_to_invs)
+  apply (simp, elim conjE)
+apply (erule disjE; clarsimp simp: ct_in_state_def pred_tcb_at_def obj_at_def)
   done
 
 lemma cancel_ipc_no_refs:

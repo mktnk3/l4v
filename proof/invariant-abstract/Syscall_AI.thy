@@ -107,12 +107,6 @@ lemma schedule_invs[wp]: "\<lbrace>invs\<rbrace> Schedule_A.schedule \<lbrace>\<
          | wpc)+
   done
 
-lemma schedule_ct_schedulable[wp]: "\<lbrace>\<top>\<rbrace> Schedule_A.schedule \<lbrace>\<lambda>rv. ct_schedulable\<rbrace>"
-sorry
-
-lemma schedule_sa_resume[wp]: "\<lbrace>\<top>\<rbrace> Schedule_A.schedule \<lbrace>\<lambda>rv. sa_resume\<rbrace>"
-sorry
-
 lemma invs_domain_time_update[simp]:
   "invs (domain_time_update f s) = invs s"
   by (simp add: invs_def valid_state_def cur_sc_tcb_def)
