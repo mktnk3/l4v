@@ -455,12 +455,12 @@ where
 definition
   sc_replies_relation_2 ::
   "(obj_ref \<rightharpoonup> obj_ref list) \<Rightarrow> (obj_ref \<rightharpoonup> obj_ref) \<Rightarrow> (obj_ref \<rightharpoonup> obj_ref) \<Rightarrow> bool" where
-  "sc_replies_relation_2 sc_repls scRepl replNexts \<equiv>
-     \<forall>p replies. sc_repls p = Some replies \<longrightarrow> heap_list replNexts (scRepl p) replies"
+  "sc_replies_relation_2 sc_repls scRepl replPrevs \<equiv>
+     \<forall>p replies. sc_repls p = Some replies \<longrightarrow> heap_list replPrevs (scRepl p) replies"
 
 abbreviation sc_replies_relation :: "det_state \<Rightarrow> kernel_state \<Rightarrow> bool" where
   "sc_replies_relation s s' \<equiv>
-    sc_replies_relation_2 (sc_replies_of s) (scReplies_of s') (replyNexts_of s')"
+    sc_replies_relation_2 (sc_replies_of s) (scReplies_of s') (replyPrevs_of s')"
 
 lemmas sc_replies_relation_def = sc_replies_relation_2_def
 
