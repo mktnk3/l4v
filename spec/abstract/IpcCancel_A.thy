@@ -230,13 +230,13 @@ where
   od"
 
 definition
-  no_reply_in_ts :: "obj_ref \<Rightarrow> (bool, 'z::state_ext) s_monad"
+  no_reply_in_ts :: "obj_ref \<Rightarrow> (unit, 'z::state_ext) s_monad"
 where
   "no_reply_in_ts tptr \<equiv> do
       st \<leftarrow> get_thread_state tptr;
-      case st of BlockedOnReceive _ r _ \<Rightarrow> return (r = None)
-               | BlockedOnReply r \<Rightarrow> return False
-               | _ \<Rightarrow> return True
+      case st of BlockedOnReceive _ (Some r) _ \<Rightarrow> fail
+               | BlockedOnReply r \<Rightarrow> fail
+               | _ \<Rightarrow> return ()
   od"
 
 text \<open>Push a reply object to the call stack.\<close>
@@ -253,15 +253,13 @@ where
     \<comment> \<open>The caller thread is either active (if we came via @{text send_ipc}),
         or was @{const BlockedOnSend} (if we came via @{text receive_ipc}).
         Either way, it can't have a reply object.\<close>
-    ts_reply_caller \<leftarrow> no_reply_in_ts caller;
-    assert ts_reply_caller;
+    no_reply_in_ts caller;
 
     \<comment> \<open>The callee thread is either active (if we came via @{text receive_ipc}),
         or was @{const BlockedOnReceive} (if we came via @{text send_ipc}).
         In the latter case, the reply was already removed via @{text reply_unlink_tcb}
         in @{text send_ipc}.\<close>
-    ts_reply_callee \<leftarrow> no_reply_in_ts caller;
-    assert ts_reply_callee;
+    no_reply_in_ts callee;
 
     \<comment> \<open>link reply and tcb\<close>
     set_reply_obj_ref reply_tcb_update reply_ptr (Some caller);
@@ -433,9 +431,8 @@ where
          set_endpoint epptr IdleEP;
          mapM_x (\<lambda>t.
            do st \<leftarrow> get_thread_state t;
-              reply_opt \<leftarrow> case st of BlockedOnReceive _ r_opt _ \<Rightarrow> return r_opt
-                                    | _ \<Rightarrow> return None;
-              when (reply_opt \<noteq> None) $ reply_unlink_tcb t (the reply_opt);
+              case st of BlockedOnReceive _ (Some r) _\<Rightarrow>  reply_unlink_tcb t r
+                    | _ \<Rightarrow> return ();
               restart_thread_if_no_fault t
             od) $ queue;
          reschedule_required
