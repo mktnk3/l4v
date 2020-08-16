@@ -133,7 +133,9 @@ When the last capability to an endpoint is deleted, any IPC operations currently
 > finaliseCap (ReplyCap { capReplyPtr = ptr }) final _ = do
 >     when final $ do
 >         tptrOpt <- getReplyTCB ptr
->         when (tptrOpt /= Nothing) $ replyClear ptr
+>         when (tptrOpt /= Nothing) $ do
+>             let tptr = fromJust tptrOpt
+>             replyClear ptr tptr
 >     return (NullCap, NullCap)
 
 No action need be taken for Null or Domain capabilities.
