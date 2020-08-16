@@ -3691,8 +3691,9 @@ lemma pred_map_weakenE:
 lemma cancel_all_ipc_loop_body_valid_sched:
   "\<lbrace>(\<lambda>s. blocked_on_send_recv_tcb_at t s \<and> t \<noteq> idle_thread s) and valid_sched\<rbrace>
      do st <- get_thread_state t;
-        reply_opt <- case st of BlockedOnReceive x r_opt _ \<Rightarrow> return r_opt | _ \<Rightarrow> return None;
-        y <- when (\<exists>y. reply_opt = Some y) (reply_unlink_tcb t (the reply_opt));
+        case st of BlockedOnReceive x None xa \<Rightarrow> return ()
+        | BlockedOnReceive x (Some xb) xa \<Rightarrow> reply_unlink_tcb t xb
+        | _ \<Rightarrow> return ();
         restart_thread_if_no_fault t
      od
    \<lbrace>\<lambda>_. valid_sched\<rbrace>"
@@ -3725,8 +3726,9 @@ crunches restart_thread_if_no_fault
 lemma cancel_all_ipc_loop_body_blocked_on_send_recv:
   "\<lbrace>\<lambda>s. blocked_on_send_recv_tcb_at t' s \<and> t' \<noteq> t\<rbrace>
      do st <- get_thread_state t;
-        reply_opt <- case st of BlockedOnReceive x r_opt _ \<Rightarrow> return r_opt | _ \<Rightarrow> return None;
-        _ <- when (\<exists>y. reply_opt = Some y) (reply_unlink_tcb t (the reply_opt));
+        case st of BlockedOnReceive x None xa \<Rightarrow> return ()
+        | BlockedOnReceive x (Some xb) xa \<Rightarrow> reply_unlink_tcb t xb
+        | _ \<Rightarrow> return ();
         restart_thread_if_no_fault t
      od
   \<lbrace>\<lambda>_. blocked_on_send_recv_tcb_at t'\<rbrace>"
@@ -3785,8 +3787,9 @@ lemma ipc_queued_thread_not_idle_thread:
 lemma cancel_all_ipc_loop_valid_sched:
   "\<lbrace>(\<lambda>s. \<forall>t\<in>set queue. blocked_on_send_recv_tcb_at t s \<and> t \<noteq> idle_thread s) and valid_sched and K (distinct queue)\<rbrace>
    mapM_x (\<lambda>t. do st <- get_thread_state t;
-                  reply_opt <- case st of BlockedOnReceive _ ro _ \<Rightarrow> return ro | _ \<Rightarrow> return None;
-                  _ <- when (\<exists>r. reply_opt = Some r) (reply_unlink_tcb t (the reply_opt));
+                  case st of BlockedOnReceive x None xa \<Rightarrow> return ()
+                  | BlockedOnReceive x (Some xb) xa \<Rightarrow> reply_unlink_tcb t xb
+                  | _ \<Rightarrow> return ();
                   restart_thread_if_no_fault t
                od) queue
    \<lbrace>\<lambda>_. valid_sched\<rbrace>"
@@ -6053,9 +6056,8 @@ lemma cancel_all_ipc_cur_sc_chargeable:
        apply (rule mapM_x_wp[where S="set xs" and xs=xs for xs])
         apply wpsimp
             apply ((wpsimp wp: restart_thread_if_no_fault_csctb hoare_vcg_ball_lift restart_thread_if_no_fault_other reply_unlink_tcb_csctb
-                               hoare_vcg_all_lift hoare_vcg_imp_lift'
+                               hoare_vcg_all_lift hoare_vcg_imp_lift' hoare_vcg_conj_lift gts_wp
                     | rule hoare_lift_Pf[where f = cur_sc])+)[3]
-         apply (wp gts_wp)
         apply (clarsimp)
         apply (drule_tac x=x in bspec, simp)
         apply (intro conjI; clarsimp)
@@ -6065,9 +6067,8 @@ lemma cancel_all_ipc_cur_sc_chargeable:
       apply (rule mapM_x_wp[where S="set xs" and xs=xs for xs])
        apply wpsimp
            apply ((wpsimp wp: restart_thread_if_no_fault_csctb hoare_vcg_ball_lift restart_thread_if_no_fault_other reply_unlink_tcb_csctb
-                              hoare_vcg_all_lift hoare_vcg_imp_lift'
+                              hoare_vcg_all_lift hoare_vcg_imp_lift' hoare_vcg_conj_lift gts_wp
                    | rule hoare_lift_Pf[where f = cur_sc])+)[3]
-        apply (wp gts_wp)
        apply (clarsimp)
        apply (drule_tac x=x in bspec, simp)
        apply (intro conjI; clarsimp)
@@ -17075,9 +17076,7 @@ lemma reply_push_released_if_bound_not_callee:
   apply (rule hoare_seq_ext[OF _ grt_sp])
   apply (rule hoare_seq_ext[OF _ assert_sp])
   apply (rule hoare_seq_ext[OF _ no_reply_in_ts_inv])
-  apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (rule hoare_seq_ext[OF _ no_reply_in_ts_inv])
-  apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (case_tac sc_caller; simp)
    apply wpsimp
   apply (wpsimp wp: sched_context_donate_released_if_bound_not_callee

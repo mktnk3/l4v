@@ -931,9 +931,7 @@ lemma reply_push_sender_sc_Some_invs:
                                           OF get_simple_ko_inv]])
   apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (rule hoare_seq_ext[OF _ no_reply_in_ts_inv])
-  apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (rule hoare_seq_ext[OF _ no_reply_in_ts_inv])
-  apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (rule_tac S="sender_sc = sc_caller \<and> sender \<noteq> thread \<and> sender \<noteq> reply_ptr \<and> thread \<noteq> reply_ptr"
            in hoare_gen_asm'', fastforce simp: sk_obj_at_pred_def pred_tcb_at_def obj_at_def)
   apply (rule subst[of "do _ <- do _ <- a; b od; c od"
@@ -1411,14 +1409,6 @@ lemma active_st_tcb_at_not_in_replies_blocked:
   " st_tcb_at active caller s \<Longrightarrow> (a, caller) \<notin> replies_blocked s"
   by (clarsimp simp: st_tcb_at_def replies_blocked_def obj_at_def)
 
-lemma no_reply_in_ts_rv_False:
-  "\<lbrace>st_tcb_at (\<lambda>st. (\<exists>x y pl. (st = BlockedOnReceive x (Some y) pl)) \<or> (\<exists>y. (st = BlockedOnReply y))) caller\<rbrace>
-   no_reply_in_ts caller
-   \<lbrace>\<lambda>ts_reply s. \<not> ts_reply\<rbrace>"
-  apply (wpsimp simp: no_reply_in_ts_def get_thread_state_def wp: thread_get_wp)
-  apply (fastforce simp: obj_at_def is_tcb st_tcb_at_def)
-  done
-
 lemma reply_push_invs':
   "\<lbrace>all_invs_but_fault_tcbs and fault_tcbs_valid_states_except_set {caller} and
     ex_nonz_cap_to callee and ex_nonz_cap_to caller and ex_nonz_cap_to reply_ptr and
@@ -1433,9 +1423,7 @@ lemma reply_push_invs':
   apply (rule hoare_seq_ext[OF _ grt_sp])
   apply (rule hoare_seq_ext[OF _ assert_sp])
   apply (rule hoare_seq_ext[OF _ no_reply_in_ts_inv])
-  apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (rule hoare_seq_ext[OF _ no_reply_in_ts_inv])
-  apply (rule hoare_seq_ext[OF _ assert_inv])
   apply (case_tac sc_caller; simp)
    apply (wpsimp simp: invs_def valid_state_def valid_pspace_def
                    wp: sts_only_idle valid_irq_node_typ set_reply_tcb_valid_tcb_state

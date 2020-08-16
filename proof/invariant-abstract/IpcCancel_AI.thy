@@ -1432,7 +1432,7 @@ lemma cancel_all_ipc_it[wp]:
    cancel_all_ipc tcb_ptr
    \<lbrace>\<lambda>_ s. P (idle_thread s)\<rbrace>"
   by (wpsimp simp: cancel_all_ipc_def set_thread_state_def reply_unlink_tcb_def
-               wp: mapM_x_wp' hoare_drop_imp)
+               wp: mapM_x_wp' hoare_drop_imp hoare_vcg_conj_lift hoare_vcg_all_lift)
 
 lemma cancel_signal_it[wp]:
   "\<lbrace>\<lambda>s. P (idle_thread s)\<rbrace> cancel_signal tcb_ptr ntfnptr
@@ -1990,8 +1990,10 @@ lemma cancel_all_ipc_invs_helper':
                           else state_refs_of s x)
           \<and> sym_refs (\<lambda>x. state_hyp_refs_of s x))\<rbrace>
    mapM_x (\<lambda>t. do st <- get_thread_state t;
-                  reply_opt <- case st of BlockedOnReceive _ ro _ \<Rightarrow> return ro | _ \<Rightarrow> return None;
-                  _ <- when (\<exists>r. reply_opt = Some r) (reply_unlink_tcb t (the reply_opt));
+                  case st of
+                  BlockedOnReceive x (Some r) xa \<Rightarrow>
+                      reply_unlink_tcb t r
+                  | _ \<Rightarrow> return ();
                   restart_thread_if_no_fault t
                od) q
    \<lbrace>\<lambda>rv. invs\<rbrace>"
@@ -2012,7 +2014,8 @@ lemma cancel_all_ipc_invs_helper':
                          replies_blocked_upd_tcb_st_helper)
    apply (erule disjE; clarsimp simp: reply_at_ppred_def pred_tcb_at_def obj_at_def)
     apply (rule conjI; clarsimp)
-     apply (drule_tac x=t and y=r and tp=ReplyTCB in sym_refsE
+     apply (subst replies_blocked_upd_tcb_st_not_BlockedonReply, simp+)
+     apply (rename_tac r; drule_tac x=t and y=r and tp=ReplyTCB in sym_refsE
             ; clarsimp simp: state_refs_of_def get_refs_def2 refs_of_rev split: option.splits)
      apply (subst replies_blocked_upd_tcb_st_not_BlockedonReply, simp+)+
   apply (rule hoare_seq_ext[OF _ gts_sp], rename_tac st)
@@ -2020,7 +2023,6 @@ lemma cancel_all_ipc_invs_helper':
      that is interesting, and prove the remainder by extracting a smaller problem
      which is much easier to solve by cases on st. First, the simpler cases. *)
   apply (case_tac "\<forall>ep r pl. st \<noteq> BlockedOnReceive ep (Some r) pl"; clarsimp)
-   apply (subst bind_assoc[symmetric])
    apply (rule_tac s="return ()" in ssubst[where P="\<lambda>a. \<lbrace>P\<rbrace> do _ <- a; b od \<lbrace>Q\<rbrace>" for P a b Q])
     apply (case_tac st; fastforce)
    apply (wpsimp wp: hoare_vcg_ball_lift restart_thread_if_no_fault_other)
@@ -2049,9 +2051,9 @@ lemma cancel_all_ipc_invs_helper:
    \<lbrace>ko_at (Endpoint ep) epptr and invs\<rbrace>
    do _ <- set_endpoint epptr IdleEP;
       _ <- mapM_x (\<lambda>t. do st <- get_thread_state t;
-                          reply_opt <- case st of BlockedOnReceive _ ro _ \<Rightarrow> return ro
-                                                                      | _ \<Rightarrow> return None;
-                          _ <- when (\<exists>r. reply_opt = Some r) (reply_unlink_tcb t (the reply_opt));
+                       case st of BlockedOnReceive x None xa \<Rightarrow> return ()
+                       | BlockedOnReceive x (Some xb) xa \<Rightarrow> reply_unlink_tcb t xb
+                       | _ \<Rightarrow> return ();
                           restart_thread_if_no_fault t
                        od) q;
       reschedule_required
@@ -2095,7 +2097,7 @@ lemma cancel_all_ipc_invs:
   apply (rule hoare_seq_ext [OF _ get_simple_ko_sp])
   apply (case_tac ep, simp_all add: get_ep_queue_def)
     apply (wp, fastforce)
-   apply (auto simp: cancel_all_ipc_invs_helper)
+   apply (auto simp: cancel_all_ipc_invs_helper[simplified])
   done
 
 lemma get_ep_queue_wp:
@@ -2122,8 +2124,10 @@ lemma cancel_all_ipc_st_tcb_at_helper:
                      else P (st_tcb_at P' t s)"
   shows "\<lbrace>V q\<rbrace>
           mapM_x (\<lambda>t. do st <- get_thread_state t;
-                         reply_opt <- case st of BlockedOnReceive _ ro _ \<Rightarrow> return ro | _ \<Rightarrow> return None;
-                         _ <- when (\<exists>r. reply_opt = Some r) (reply_unlink_tcb t (the reply_opt));
+                         case st of
+                         BlockedOnReceive x (Some r) xa \<Rightarrow>
+                             reply_unlink_tcb t r
+                         | _ \<Rightarrow> return ();
                          restart_thread_if_no_fault t
                       od) q
          \<lbrace>\<lambda>rv s. P (st_tcb_at P' t s)\<rbrace>"
@@ -2370,8 +2374,9 @@ lemmas
 lemma cancel_all_unlive_helper:
   "\<lbrace>obj_at (\<lambda>obj. \<not> live obj \<and> is_ep obj) ptr\<rbrace>
      mapM_x (\<lambda>t. do st <- get_thread_state t;
-                    reply_opt <- case st of BlockedOnReceive _ ro _ \<Rightarrow> return ro | _ \<Rightarrow> return None;
-                    _ <- when (\<exists>r. reply_opt = Some r) (reply_unlink_tcb t (the reply_opt));
+                    case st of BlockedOnReceive x None xa \<Rightarrow> return ()
+                    | BlockedOnReceive x (Some xb) xa \<Rightarrow> reply_unlink_tcb t xb
+                    | _ \<Rightarrow> return ();
                     restart_thread_if_no_fault t
                  od) q
    \<lbrace>\<lambda>rv. obj_at (Not \<circ> live) ptr\<rbrace>"
