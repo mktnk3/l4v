@@ -42,10 +42,12 @@ This module specifies the behavior of reply objects.
 >     assert (replyNext reply == Nothing) "replyPush: replyNext must be Nothing"
 
 >     tsCaller <- getThreadState callerPtr
->     assert (replyObject tsCaller == Nothing) "tcb caller should not be in a existing call stack"
+>     when (isReply tsCaller || isReceive tsCaller) $
+>         assert (replyObject tsCaller == Nothing) "tcb caller should not be in a existing call stack"
 
 >     tsCallee <- getThreadState calleePtr
->     setThreadState (tsCallee { replyObject = Nothing }) calleePtr
+>     when (isReply tsCallee || isReceive tsCallee) $
+>         assert (replyObject tsCallee == Nothing) "tcb callee should not have a reply linked"
 
 >     setReplyTCB (Just callerPtr) replyPtr
 >     setThreadState (BlockedOnReply (Just replyPtr)) callerPtr

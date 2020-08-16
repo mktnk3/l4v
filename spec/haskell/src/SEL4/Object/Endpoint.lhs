@@ -257,10 +257,11 @@ If an endpoint is deleted, then every pending IPC operation using it must be can
 >                 setEndpoint epptr IdleEP
 >                 forM_ (epQueue ep) (\t -> do
 >                     st <- getThreadState t
->                     let replyOpt = if isReceive st then replyObject st else Nothing
->                     case replyOpt of
->                         Nothing -> return ()
->                         Just reply -> replyUnlink reply t
+>                     when (isReceive st) $ do
+>                         let rptrOpt = replyObject st
+>                         case rptrOpt of
+>                             Nothing -> return ()
+>                             Just reply -> replyUnlink reply t
 >                     fault <- threadGet tcbFault t
 >                     if isNothing fault
 >                         then do
