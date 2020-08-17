@@ -2795,6 +2795,14 @@ lemma sort_queue_inv:
   "\<lbrace> P \<rbrace> sort_queue ls \<lbrace> \<lambda>rv. P \<rbrace>"
   by (wpsimp simp: sort_queue_def wp: mapM_wp) auto
 
+lemma ensure_schedulable_cap_to[wp]:
+  "ensure_schedulable tp \<lbrace>ex_nonz_cap_to p \<rbrace>"
+  sorry
+
+lemma ensure_schedulable_typ_at[wp]:
+  "ensure_schedulable tp \<lbrace>\<lambda>s. P (typ_at T p s) \<rbrace>"
+  sorry
+
 context Ipc_AI begin
 
 lemma hoare_drop_imp_under_All:
@@ -2950,5 +2958,346 @@ crunches complete_signal, update_sk_obj_ref, do_nbrecv_failed_transfer
   for pred_tcb_at[wp]: "\<lambda>s. P (pred_tcb_at proj P' t s)"
 
 lemmas thread_set_Pmdb = thread_set_no_cdt
+
+
+(* temporarily move things here to resolve dependency *)
+
+
+crunches ensure_schedulable
+  for aligned[wp]: pspace_aligned
+  and distinct[wp]: pspace_distinct
+  and iflive[wp]: if_live_then_nonz_cap
+  and typ_at[wp]: "\<lambda>s. P (typ_at T p s)"
+  and sc_at[wp]: "sc_at sc_ptr"
+  and tcb_at[wp]: "tcb_at tptr"
+  and cte_wp_at[wp]: "cte_wp_at P c"
+  and irq_node[wp]: "\<lambda>s. P (interrupt_irq_node s)"
+  and it[wp]: "\<lambda>s. P (idle_thread s)"
+  and no_cdt[wp]: "\<lambda>s. P (cdt s)"
+  and no_revokable[wp]: "\<lambda>s. P (is_original_cap s)"
+  and valid_irq_states[wp]: valid_irq_states
+  and pspace_in_kernel_window[wp]: pspace_in_kernel_window
+  and pspace_respects_device_region[wp]: pspace_respects_device_region
+  and cur_tcb[wp]: cur_tcb
+  and interrupt_states[wp]: "\<lambda>s. P (interrupt_states s)"
+  and valid_mdb[wp]: valid_mdb
+  and valid_objs[wp]: valid_objs
+  and zombies[wp]: zombies_final
+  and valid_irq_handlers[wp]: valid_irq_handlers
+  and valid_ioc[wp]: valid_ioc
+  and cap_refs_in_kernel_window[wp]: cap_refs_in_kernel_window
+  and cap_refs_respects_device_region[wp]: cap_refs_respects_device_region
+  and valid_idle[wp]: valid_idle
+  and only_idle[wp]: only_idle
+  and valid_arch_state[wp]: valid_arch_state
+  and ifunsafe[wp]: if_unsafe_then_cap
+  and valid_global_objs[wp]: valid_global_objs
+  and valid_global_vspace_mappings[wp]: valid_global_vspace_mappings
+  and valid_arch_caps[wp]: valid_arch_caps
+  and valid_kernel_mappings[wp]: valid_kernel_mappings
+  and equal_kernel_mappings[wp]: equal_kernel_mappings
+  and valid_vspace_objs[wp]: valid_vspace_objs
+  and valid_machine_state[wp]: valid_machine_state
+  and valid_global_refs[wp]: valid_global_refs
+  and valid_asid_map[wp]: valid_asid_map
+  and state_hyp_refs_of[wp]: "\<lambda>s. P (state_hyp_refs_of s)"
+  and state_refs_of[wp]: "\<lambda>s. P (state_refs_of s)"
+  and caps_of_state[wp]: "\<lambda>s. P (caps_of_state s)"
+  and ex_cap[wp]: "ex_nonz_cap_to p"
+  and fault_tcbs_valid_states[wp]: fault_tcbs_valid_states
+  (wp: crunch_wps simp: crunch_simps)
+
+crunches test_possible_switch_to
+  for aligned[wp]: pspace_aligned
+  and distinct[wp]: pspace_distinct
+  and iflive[wp]: if_live_then_nonz_cap
+  and typ_at[wp]: "\<lambda>s. P (typ_at T p s)"
+  and sc_at[wp]: "sc_at sc_ptr"
+  and tcb_at[wp]: "tcb_at tptr"
+  and cte_wp_at[wp]: "cte_wp_at P c"
+  and irq_node[wp]: "\<lambda>s. P (interrupt_irq_node s)"
+  and it[wp]: "\<lambda>s. P (idle_thread s)"
+  and no_cdt[wp]: "\<lambda>s. P (cdt s)"
+  and no_revokable[wp]: "\<lambda>s. P (is_original_cap s)"
+  and valid_irq_states[wp]: valid_irq_states
+  and pspace_in_kernel_window[wp]: pspace_in_kernel_window
+  and pspace_respects_device_region[wp]: pspace_respects_device_region
+  and cur_tcb[wp]: cur_tcb
+  and interrupt_states[wp]: "\<lambda>s. P (interrupt_states s)"
+  and valid_mdb[wp]: valid_mdb
+  and valid_objs[wp]: valid_objs
+  and zombies[wp]: zombies_final
+  and valid_irq_handlers[wp]: valid_irq_handlers
+  and valid_ioc[wp]: valid_ioc
+  and cap_refs_in_kernel_window[wp]: cap_refs_in_kernel_window
+  and cap_refs_respects_device_region[wp]: cap_refs_respects_device_region
+  and valid_idle[wp]: valid_idle
+  and only_idle[wp]: only_idle
+  and valid_arch_state[wp]: valid_arch_state
+  and ifunsafe[wp]: if_unsafe_then_cap
+  and valid_global_objs[wp]: valid_global_objs
+  and valid_global_vspace_mappings[wp]: valid_global_vspace_mappings
+  and valid_arch_caps[wp]: valid_arch_caps
+  and valid_kernel_mappings[wp]: valid_kernel_mappings
+  and equal_kernel_mappings[wp]: equal_kernel_mappings
+  and valid_vspace_objs[wp]: valid_vspace_objs
+  and valid_machine_state[wp]: valid_machine_state
+  and valid_global_refs[wp]: valid_global_refs
+  and valid_asid_map[wp]: valid_asid_map
+  and state_hyp_refs_of[wp]: "\<lambda>s. P (state_hyp_refs_of s)"
+  and state_refs_of[wp]: "\<lambda>s. P (state_refs_of s)"
+  and caps_of_state[wp]: "\<lambda>s. P (caps_of_state s)"
+  and ex_cap[wp]: "ex_nonz_cap_to p"
+  and fault_tcbs_valid_states[wp]: fault_tcbs_valid_states
+  (wp: crunch_wps simp: crunch_simps)
+
+crunches sched_context_bind_tcb, update_sk_obj_ref
+  for arch_state[wp]: "\<lambda>s. P (arch_state s)"
+  (wp: crunch_wps)
+
+lemma test_possible_switch_to_valid_replies[wp]:
+  "test_possible_switch_to tcb_ptr \<lbrace> valid_replies_pred P \<rbrace>"
+  by (wpsimp simp: test_possible_switch_to_def)
+
+lemma test_possible_switch_to_cur_sc_tcb[wp]:
+  "\<lbrace>cur_sc_tcb\<rbrace> test_possible_switch_to tcb \<lbrace>\<lambda>_. cur_sc_tcb\<rbrace>"
+  by (wpsimp simp: test_possible_switch_to_def)
+
+lemma sched_context_bind_tcb_invs[wp]:
+  "\<lbrace>invs
+    and bound_sc_tcb_at ((=) None) tcb and ex_nonz_cap_to tcb
+    and sc_tcb_sc_at ((=) None) sc and ex_nonz_cap_to sc\<rbrace>
+   sched_context_bind_tcb sc tcb
+   \<lbrace>\<lambda>rv. invs\<rbrace>"
+  apply (wpsimp simp: sched_context_bind_tcb_def invs_def valid_state_def valid_pspace_def
+                  wp: valid_irq_node_typ obj_set_prop_at get_sched_context_wp ssc_refs_of_Some
+                      update_sched_context_valid_objs_same valid_ioports_lift
+                      update_sched_context_iflive_update update_sched_context_refs_of_update
+                      update_sched_context_cur_sc_tcb_None update_sched_context_valid_idle)
+  apply (clarsimp simp: obj_at_def is_sc_obj_def pred_tcb_at_def get_refs_def2)
+  apply (clarsimp simp: sc_tcb_sc_at_def obj_at_def)
+  apply safe
+      apply (erule (1) valid_objsE)
+      apply (clarsimp simp: valid_obj_def valid_sched_context_def obj_at_def is_tcb)
+     apply (frule valid_objs_valid_sched_context_size, fastforce)
+     apply assumption
+    apply (erule delta_sym_refs)
+     apply (clarsimp simp: state_refs_of_def obj_at_def split: if_splits)
+    apply (clarsimp simp: state_refs_of_def get_refs_def2 image_iff
+                          tcb_st_refs_of_def sc_tcb_sc_at_def obj_at_def
+                   dest!: symreftype_inverse' split: if_splits)
+    apply (clarsimp split: thread_state.split_asm if_split_asm)
+   apply (auto simp: valid_idle_def pred_tcb_at_def obj_at_def)
+  done
+
+lemma maybe_sched_context_bind_tcb_invs[wp]:
+  "\<lbrace>invs and (\<lambda>s. tcb_at tcb s \<and> (bound_sc_tcb_at (\<lambda>x. x \<noteq> Some sc) tcb s \<longrightarrow>
+                    ex_nonz_cap_to sc s \<and> ex_nonz_cap_to tcb s
+                  \<and> sc_tcb_sc_at ((=) None) sc s \<and> bound_sc_tcb_at ((=) None) tcb s))\<rbrace>
+   maybe_sched_context_bind_tcb sc tcb
+   \<lbrace>\<lambda>rv. invs\<rbrace>"
+  unfolding maybe_sched_context_bind_tcb_def
+  apply (wpsimp simp: get_tcb_obj_ref_def wp: thread_get_wp)
+  apply (fastforce simp: pred_tcb_at_def obj_at_def is_tcb)
+  done
+
+(* from IpcCancel *)
+
+crunches restart_thread_if_no_fault
+  for valid_objs[wp]: valid_objs
+  (wp: crunch_wps)
+
+lemma restart_thread_if_no_fault_fault_tcbs_valid_states[wp]:
+  "\<lbrace>fault_tcbs_valid_states\<rbrace>
+   restart_thread_if_no_fault t
+   \<lbrace>\<lambda>_. fault_tcbs_valid_states\<rbrace>"
+  apply (simp add: restart_thread_if_no_fault_def)
+  apply (wpsimp wp: sts_fault_tcbs_valid_states thread_get_wp')+
+  apply (auto simp: pred_tcb_at_def obj_at_def)
+  done
+
+crunches restart_thread_if_no_fault
+  for cap_refs_in_kernel_window[wp]: cap_refs_in_kernel_window
+  and cap_refs_respects_device_region[wp]: cap_refs_respects_device_region
+  and cur_tcb[wp]: cur_tcb
+  and equal_kernel_mappings[wp]: equal_kernel_mappings
+  and if_unsafe_then_cap[wp]: if_unsafe_then_cap
+  and only_idle[wp]: only_idle
+  and pspace_aligned[wp]: pspace_aligned
+  and pspace_distinct[wp]: pspace_distinct
+  and pspace_in_kernel_window[wp]: pspace_in_kernel_window
+  and pspace_respects_device_region[wp]: pspace_respects_device_region
+  and valid_arch_caps[wp]: valid_arch_caps
+  and valid_arch_state[wp]: valid_arch_state
+  and valid_asid_map[wp]: valid_asid_map
+  and valid_global_objs[wp]: valid_global_objs
+  and valid_global_refs[wp]: valid_global_refs
+  and valid_global_vspace_mappings[wp]: valid_global_vspace_mappings
+  and valid_idle[wp]: valid_idle
+  and valid_ioc[wp]: valid_ioc
+  and fault_tcbs_valid_states[wp]: fault_tcbs_valid_states
+  and valid_irq_handlers[wp]: valid_irq_handlers
+  and valid_irq_node[wp]: valid_irq_node
+  and valid_irq_states[wp]: valid_irq_states
+  and valid_kernel_mappings[wp]: valid_kernel_mappings
+  and valid_machine_state[wp]: valid_machine_state
+  and valid_mdb[wp]: valid_mdb
+  and valid_vspace_objs[wp]: valid_vspace_objs
+  and zombies_final[wp]: zombies_final
+  and caps_of_state[wp]: "\<lambda>s. P (caps_of_state s)"
+  and arch_state[wp]: "\<lambda>s. P (arch_state s)"
+  and it[wp]: "\<lambda>s. P (idle_thread s)"
+  (wp: get_simple_ko_wp valid_irq_node_typ crunch_wps sts_only_idle)
+
+lemma restart_thread_if_no_fault_other:
+  "\<lbrace>\<lambda>s. Q (st_tcb_at P t s) \<and> t \<noteq> t'\<rbrace>
+   restart_thread_if_no_fault t'
+   \<lbrace>\<lambda>_ s. Q (st_tcb_at P t s)\<rbrace>"
+  apply (simp add: restart_thread_if_no_fault_def)
+  by (wpsimp wp: sts_st_tcb_at_other hoare_drop_imps)
+
+runches restart_thread_if_no_fault
+  for cte_wp_at[wp]: "cte_wp_at P c"
+  and interrupt_irq_node[wp]: "\<lambda>s. P (interrupt_irq_node s)"
+  and no_cdt[wp]: "\<lambda>s. P (cdt s)"
+  and cur_thread[wp]: "\<lambda>s. P (cur_thread s)"
+  and cur_sc[wp]: "\<lambda>s. P (cur_sc s)"
+  and hyp_refs_of[wp]: "\<lambda>s. P (state_hyp_refs_of s)"
+  and no_revokable[wp]: "\<lambda>s. P (is_original_cap s)"
+  and cur_sc_tcb[wp]: "cur_sc_tcb"
+  and if_live_then_nonz_cap[wp]: if_live_then_nonz_cap
+  and valid_replies[wp]: valid_replies
+  and valid_ioports[wp]: valid_ioports
+  and ex_nonz_cap_to[wp]: "ex_nonz_cap_to p"
+  and tcb_at[wp]: "tcb_at p"
+  and ep_at[wp]: "ep_at p"
+  (simp: crunch_simps wp: crunch_wps sts_valid_replies)
+
+lemma restart_thread_if_no_fault_refs_of[wp]:
+  "\<lbrace>\<lambda>s. P ((state_refs_of s) (t := tcb_non_st_state_refs_of s t))\<rbrace>
+   restart_thread_if_no_fault t
+   \<lbrace>\<lambda>rv s. P (state_refs_of s)\<rbrace>"
+  apply (simp add: restart_thread_if_no_fault_def)
+  by (wpsimp wp: hoare_drop_imps simp: fun_upd_def)
+
+(* This rule can cause problems with the simplifier if rule unification chooses a
+   P' that does not specify proj. If necessary, this can be worked around by
+   manually specifying proj. *)
+lemma restart_thread_if_no_fault_pred_tcb_at':
+  "\<forall>tcb ts. proj (tcb_to_itcb tcb) = proj (tcb_to_itcb (tcb\<lparr>tcb_state := ts\<rparr>))
+   \<Longrightarrow> restart_thread_if_no_fault ref \<lbrace>\<lambda>s. P' (pred_tcb_at proj P t s)\<rbrace>"
+  apply (simp add: restart_thread_if_no_fault_def)
+  by (wpsimp wp: set_thread_state_pred_tcb_at' hoare_drop_imps)
+
+lemma restart_thread_if_no_fault_st_tcb_at_cases_strong:
+  "\<lbrace>\<lambda>s. tcb_at t s \<longrightarrow> (t = t' \<longrightarrow> (if fault_tcb_at ((=) None) t s
+                                    then P (P' Restart)
+                                    else P (P' Inactive)))
+                        \<and> (t \<noteq> t' \<longrightarrow> P (st_tcb_at P' t' s))\<rbrace>
+   restart_thread_if_no_fault t
+   \<lbrace>\<lambda>rv s. P (st_tcb_at P' t' s) \<rbrace>"
+  by (wpsimp simp: restart_thread_if_no_fault_def
+               wp: sts_st_tcb_at_cases_strong thread_get_wp')
+     (auto simp: pred_tcb_at_def obj_at_def)
+
+lemma cancel_badged_sends_filterM_helper':
+  "\<forall>ys.
+   \<lbrace>\<lambda>s. all_invs_but_sym_refs s
+           \<and> valid_replies s
+           \<and> sym_refs (state_hyp_refs_of s) \<and> distinct (xs @ ys) \<and> ep_at epptr s
+           \<and> ex_nonz_cap_to epptr s
+           \<and> sym_refs ((state_refs_of s) (epptr := ((set (xs @ ys)) \<times> {EPSend})))
+           \<and> (\<forall>x \<in> set (xs @ ys). {r \<in> state_refs_of s x. snd r \<noteq> TCBBound \<and>
+                                   snd r \<noteq> TCBSchedContext \<and> snd r \<noteq> TCBYieldTo}
+              = {(epptr, TCBBlockedSend)})\<rbrace>
+      filterM (\<lambda>t. do st \<leftarrow> get_thread_state t;
+                      if blocking_ipc_badge st = badge
+                      then do _ <- restart_thread_if_schedulable_no_fault t;
+                              return False
+                      od
+                      else return True
+                   od) xs
+   \<lbrace>\<lambda>rv s. all_invs_but_sym_refs s
+            \<and> valid_replies s
+            \<and> sym_refs (state_hyp_refs_of s)
+            \<and> ep_at epptr s \<and> (\<forall>x \<in> set (xs @ ys). tcb_at x s)
+            \<and> ex_nonz_cap_to epptr s
+            \<and> (\<forall>y \<in> set ys. {r \<in> state_refs_of s y. snd r \<noteq> TCBBound \<and>
+                             snd r \<noteq> TCBSchedContext \<and> snd r \<noteq> TCBYieldTo}
+               = {(epptr, TCBBlockedSend)})
+            \<and> distinct rv \<and> distinct (xs @ ys) \<and> (set rv \<subseteq> set xs)
+            \<and> sym_refs ((state_refs_of s) (epptr := ((set rv \<union> set ys) \<times> {EPSend})))\<rbrace>"
+  supply if_cong[cong]
+  apply (rule rev_induct[where xs=xs])
+   apply (rule allI, simp)
+   apply wp
+   apply clarsimp
+   apply (drule(1) bspec, drule singleton_eqD, clarsimp, drule state_refs_of_elemD)
+   apply (clarsimp simp: st_tcb_at_refs_of_rev pred_tcb_at_def is_tcb
+                  elim!: obj_at_weakenE)
+  apply (clarsimp simp: filterM_append bind_assoc simp del: set_append distinct_append)
+  apply (drule spec, erule hoare_seq_ext[rotated])
+  apply (rule hoare_seq_ext [OF _ gts_sp])
+  apply (wpsimp wp: valid_irq_node_typ sts_only_idle hoare_vcg_const_Ball_lift
+                    valid_ioports_lift sts_valid_replies)
+  apply (rule conjI[rotated])
+   apply blast
+  apply (clarsimp simp: replies_blocked_upd_tcb_st_helper)
+  apply (thin_tac "obj_at f epptr s" for f s)
+  apply (thin_tac "tcb_at x s" for x s)
+  apply (thin_tac "sym_refs (state_hyp_refs_of s)" for s)
+  apply (frule singleton_eqD, clarify, drule state_refs_of_elemD)
+  apply (frule (1) if_live_then_nonz_capD, rule refs_of_live, fastforce)
+  apply (clarsimp simp: st_tcb_at_refs_of_rev)
+  apply (clarsimp simp: pred_tcb_def2 valid_idle_def)
+  apply (rule conjI, clarsimp)
+  apply (rule conjI, clarsimp dest!: get_tcb_SomeD)
+   apply (subst replies_blocked_upd_tcb_st_not_BlockedonReply, simp+)
+  apply (rule conjI, force)
+  apply (erule delta_sym_refs)
+   apply (simp split: if_split_asm)
+  apply (simp split: if_split_asm)
+   apply fastforce
+  apply (subgoal_tac "(y, tp) \<in> {r \<in> state_refs_of s x.
+                      snd r \<noteq> TCBBound \<and> snd r \<noteq> TCBSchedContext \<and> snd r \<noteq> TCBYieldTo}")
+   apply clarsimp
+   apply fastforce
+  apply fastforce
+  done
+
+lemmas cancel_badged_sends_filterM_helper
+    = spec [where x=Nil, OF cancel_badged_sends_filterM_helper', simplified]
+
+lemma cancel_badged_sends_invs[wp]:
+  "\<lbrace>invs\<rbrace> cancel_badged_sends epptr badge \<lbrace>\<lambda>rv. invs\<rbrace>"
+  supply if_cong[cong]
+  apply (simp add: cancel_badged_sends_def)
+  apply (rule hoare_seq_ext [OF _ get_simple_ko_sp])
+  apply (case_tac ep; simp)
+    apply wpsimp
+   apply (simp add: invs_def valid_state_def valid_pspace_def)
+   apply (wpsimp wp: valid_irq_node_typ valid_ioports_lift)
+     apply (simp add: fun_upd_def[symmetric] ep_redux_simps ep_at_def2[symmetric, simplified]
+                cong: list.case_cong)
+  apply (rule hoare_strengthen_post,
+            rule cancel_badged_sends_filterM_helper[where epptr=epptr])
+     apply (auto intro:obj_at_weakenE)[1]
+    apply (wpsimp wp: valid_irq_node_typ set_endpoint_ep_at valid_ioports_lift)
+   apply (clarsimp simp: valid_ep_def conj_comms)
+   apply (subst obj_at_weakenE, simp, clarsimp simp: is_ep_def)
+   apply (clarsimp simp: is_ep_def)
+   apply (frule(1) sym_refs_ko_atD, clarsimp)
+   apply (frule(1) if_live_then_nonz_capD, (clarsimp simp: live_def)+)
+   apply (erule(1) obj_at_valid_objsE)
+   apply (clarsimp simp: valid_obj_def valid_ep_def st_tcb_at_refs_of_rev)
+   apply (simp add: fun_upd_idem obj_at_def is_ep_def | subst fun_upd_def[symmetric])+
+   apply (clarsimp, drule(1) bspec)
+   apply (drule st_tcb_at_state_refs_ofD)
+   apply (intro conjI)
+    apply (fastforce simp: set_eq_subset)
+   apply (fastforce simp: get_refs_def2)
+  apply wpsimp
+  done
+
 
 end

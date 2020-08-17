@@ -996,7 +996,7 @@ lemmas is_schedulable_inv[wp] = is_schedulable_wp[where P="\<lambda>_. P" for P,
 
 declare reprogram_timer_update_arch.state_refs_update[simp]
 
-crunches sched_context_resume, test_possible_switch_to, tcb_release_remove, postpone
+crunches sched_context_resume, tcb_release_remove, postpone
   for aligned[wp]: pspace_aligned
   and distinct[wp]: pspace_distinct
   and iflive[wp]: if_live_then_nonz_cap
@@ -1048,7 +1048,7 @@ lemma set_tcb_queue_valid_replies[wp]:
   "set_tcb_queue d prio queue \<lbrace> valid_replies_pred P \<rbrace>"
   by (wpsimp simp: set_tcb_queue_def)
 
-crunches sched_context_bind_tcb, update_sk_obj_ref
+crunches postpone, update_sk_obj_ref
   for arch_state[wp]: "\<lambda>s. P (arch_state s)"
   (wp: crunch_wps)
 
@@ -1068,10 +1068,6 @@ lemma possible_switch_to_valid_replies[wp]:
   "possible_switch_to tcb_ptr \<lbrace> valid_replies_pred P \<rbrace>"
   by (wpsimp simp: possible_switch_to_def)
 
-lemma test_possible_switch_to_valid_replies[wp]:
-  "test_possible_switch_to tcb_ptr \<lbrace> valid_replies_pred P \<rbrace>"
-  by (wpsimp simp: test_possible_switch_to_def)
-
 lemma tcb_release_enqueue_valid_replies[wp]:
   "tcb_release_enqueue tcb_ptr \<lbrace> valid_replies_pred P \<rbrace>"
   by (wpsimp simp: tcb_release_enqueue_def wp: mapM_wp')
@@ -1090,10 +1086,6 @@ lemma possible_switch_to_cur_sc_tcb[wp]:
                    thread_get_def reschedule_required_def set_scheduler_action_def
                    is_schedulable_def get_tcb_obj_ref_def cur_sc_tcb_def sc_tcb_sc_at_def
                    obj_at_def)
-
-lemma test_possible_switch_to_cur_sc_tcb[wp]:
-  "\<lbrace>cur_sc_tcb\<rbrace> test_possible_switch_to tcb \<lbrace>\<lambda>_. cur_sc_tcb\<rbrace>"
-  by (wpsimp simp: test_possible_switch_to_def)
 
 (* FIXME: move to Invariants_AI *)
 lemma cur_sc_tcb_release_queue_update[simp]:
@@ -1128,44 +1120,6 @@ lemma reschedule_required_cur_sc_tcb [wp]:
   by (wpsimp simp: reschedule_required_def set_scheduler_action_def tcb_sched_action_def
                    set_tcb_queue_def get_tcb_queue_def thread_get_def is_schedulable_def
                    cur_sc_tcb_def sc_tcb_sc_at_def obj_at_def)
-
-lemma sched_context_bind_tcb_invs[wp]:
-  "\<lbrace>invs
-    and bound_sc_tcb_at ((=) None) tcb and ex_nonz_cap_to tcb
-    and sc_tcb_sc_at ((=) None) sc and ex_nonz_cap_to sc\<rbrace>
-   sched_context_bind_tcb sc tcb
-   \<lbrace>\<lambda>rv. invs\<rbrace>"
-  apply (wpsimp simp: sched_context_bind_tcb_def invs_def valid_state_def valid_pspace_def
-                  wp: valid_irq_node_typ obj_set_prop_at get_sched_context_wp ssc_refs_of_Some
-                      update_sched_context_valid_objs_same valid_ioports_lift
-                      update_sched_context_iflive_update update_sched_context_refs_of_update
-                      update_sched_context_cur_sc_tcb_None update_sched_context_valid_idle)
-  apply (clarsimp simp: obj_at_def is_sc_obj_def pred_tcb_at_def get_refs_def2)
-  apply (clarsimp simp: sc_tcb_sc_at_def obj_at_def)
-  apply safe
-      apply (erule (1) valid_objsE)
-      apply (clarsimp simp: valid_obj_def valid_sched_context_def obj_at_def is_tcb)
-     apply (frule valid_objs_valid_sched_context_size, fastforce)
-     apply assumption
-    apply (erule delta_sym_refs)
-     apply (clarsimp simp: state_refs_of_def obj_at_def split: if_splits)
-    apply (clarsimp simp: state_refs_of_def get_refs_def2 image_iff
-                          tcb_st_refs_of_def sc_tcb_sc_at_def obj_at_def
-                   dest!: symreftype_inverse' split: if_splits)
-    apply (clarsimp split: thread_state.split_asm if_split_asm)
-   apply (auto simp: valid_idle_def pred_tcb_at_def obj_at_def)
-  done
-
-lemma maybe_sched_context_bind_tcb_invs[wp]:
-  "\<lbrace>invs and (\<lambda>s. tcb_at tcb s \<and> (bound_sc_tcb_at (\<lambda>x. x \<noteq> Some sc) tcb s \<longrightarrow>
-                    ex_nonz_cap_to sc s \<and> ex_nonz_cap_to tcb s
-                  \<and> sc_tcb_sc_at ((=) None) sc s \<and> bound_sc_tcb_at ((=) None) tcb s))\<rbrace>
-   maybe_sched_context_bind_tcb sc tcb
-   \<lbrace>\<lambda>rv. invs\<rbrace>"
-  unfolding maybe_sched_context_bind_tcb_def
-  apply (wpsimp simp: get_tcb_obj_ref_def wp: thread_get_wp)
-  apply (fastforce simp: pred_tcb_at_def obj_at_def is_tcb)
-  done
 
 lemma sched_context_unbind_valid_replies[wp]:
   "tcb_release_remove tcb_ptr \<lbrace> valid_replies_pred P \<rbrace>"
