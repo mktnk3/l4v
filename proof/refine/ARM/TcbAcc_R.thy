@@ -158,7 +158,7 @@ lemma set_object_valid_tcbs[wp]:
   done
 
 lemma set_reply_obj_ref_valid_tcb[wp]:
-  "set_reply_obj_ref reply_tcb_update rp opt \<lbrace>valid_tcb ptr tcb\<rbrace>"
+  "set_reply_obj_ref f rp opt \<lbrace>valid_tcb ptr tcb\<rbrace>"
   apply (clarsimp simp: update_sk_obj_ref_def set_simple_ko_def)
   apply (wpsimp wp: set_object_typ_ats get_object_wp)
   done
@@ -172,14 +172,14 @@ lemma set_simple_ko_not_tcb_at[wp]:
   done
 
 lemma set_reply_obj_ref_not_tcb_at[wp]:
-  "set_reply_obj_ref reply_tcb_update rp opt \<lbrace>\<lambda>s. \<not> ko_at (TCB tcb) t s\<rbrace>"
+  "set_reply_obj_ref f rp opt \<lbrace>\<lambda>s. \<not> ko_at (TCB tcb) t s\<rbrace>"
   apply (clarsimp simp: update_sk_obj_ref_def)
   apply (wpsimp wp: set_simple_ko_wp get_simple_ko_wp)
   apply (clarsimp simp: obj_at_def sk_obj_at_pred_def pred_neg_def split: if_splits)
   done
 
 lemma set_reply_obj_ref_valid_tcbs[wp]:
-  "set_reply_obj_ref reply_tcb_update rp opt \<lbrace>valid_tcbs\<rbrace>"
+  "set_reply_obj_ref f rp opt \<lbrace>valid_tcbs\<rbrace>"
   unfolding valid_tcbs_def
   apply (wpsimp wp: hoare_vcg_all_lift hoare_vcg_imp_lift' simp: pred_neg_def)
   done
