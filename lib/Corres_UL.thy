@@ -1524,9 +1524,18 @@ definition sr_inv_ul :: "('a \<times> 'b) set \<Rightarrow> ('a \<Rightarrow> bo
        \<forall>s s' t'. (s, s') \<in> sr \<longrightarrow> P s \<longrightarrow> P' s'
               \<longrightarrow> ((), t') \<in> fst (f s') \<longrightarrow> (s, t') \<in> sr"
 
+definition sr_inv2_ul where
+  "sr_inv2_ul sr r P P' Q' f \<equiv>
+    \<forall>s s' rv s''. (s, s') \<in> sr \<longrightarrow> P s \<longrightarrow> P' s'
+         \<longrightarrow> (rv, s'') \<in> fst (f s') \<longrightarrow> (s, s'') \<in> sr \<and> r () rv \<and> Q' rv s''"
+
 lemma corres_noop_assm: (* check equivalence *)
   "(\<forall>s. P s \<longrightarrow> \<lbrace>P' and (\<lambda>s'. (s, s') \<in> sr)\<rbrace> m \<lbrace>\<lambda>_ s'. (s, s') \<in> sr\<rbrace>) \<longleftrightarrow> sr_inv_ul sr P P' m"
   by (fastforce simp: valid_def sr_inv_ul_def)
+
+lemma corres_noop_assm2: (* check equivalence *)
+  "(\<forall>s. P s \<longrightarrow> \<lbrace>P' and (\<lambda>s'. (s, s') \<in> sr)\<rbrace> m \<lbrace>\<lambda>rv s'. (s, s') \<in> sr \<and> Q' rv s' \<and> r () rv\<rbrace>) \<longleftrightarrow> sr_inv2_ul sr r P P' Q' m"
+  by (fastforce simp: valid_def sr_inv2_ul_def cong: conj_cong)
 
 lemma sr_inv_ul_imp:
   "\<lbrakk>sr_inv_ul sr Q Q' f; \<And>s. P s \<Longrightarrow> Q s; \<And>s. P' s \<Longrightarrow> Q' s\<rbrakk> \<Longrightarrow> sr_inv_ul sr P P' f "
