@@ -2391,6 +2391,30 @@ lemma next_reply_in_sc_replies:
   apply auto
   done
 
+lemma prev_reply_in_sc_replies:
+  "\<lbrakk>sc_replies_relation s s'; sc_with_reply rp s = Some scp; sym_refs (list_refs_of_replies' s');
+    sym_refs (state_refs_of' s'); replyPrevs_of s' rp = Some nrp; reply_at' nrp s'; sc_at' scp s'\<rbrakk>
+  \<Longrightarrow>\<exists>xs ys. sc_replies_of s scp = Some (xs @ rp # nrp # ys)"
+  supply opt_mapE[rule del]
+  apply (frule (1) sc_replies_relation_sc_with_reply_heap_path)
+  apply (prop_tac "replyNexts_of s' nrp = Some rp")
+   apply (simp add: sym_refs_replyNext_replyPrev_sym[symmetric])
+  apply (drule sc_with_reply_SomeD, clarsimp)
+  apply (prop_tac "the (sc_replies_of s scp) = sc_replies sc")
+  using heap_list_unique sc_replies_relation_prevs_list' apply blast
+  apply simp
+  apply (frule (2) heap_list_next_in_list)
+(* reply_at nrp s or reply_at rp s *)
+  apply (frule (1) sym_refs_replySCs_of_None[where rp=nrp])
+   apply (erule replyNexts_Some_replySCs_None)
+  apply (drule_tac x=scp in spec)
+  apply (clarsimp simp: vs_heap_simps)
+  apply (frule (2) heap_list_next_takeWhile_append[where p=rp])
+  apply (frule in_list_decompose_takeWhile[where x=nrp])
+  apply (frule in_list_decompose_takeWhile[where x=rp])
+  apply auto
+  done
+
 lemma update_sc_replies_update_middle_updateReply_prev_corres:
   "\<lbrakk> rp \<in> set (sc_replies sc);
      st = Structures_A.thread_state.BlockedOnReply rp;
@@ -2722,65 +2746,37 @@ lemma sc_with_reply_replyPrev_None:
 
 lemma sc_with_reply_replyNext_None:
   "\<lbrakk>sc_with_reply rp s = None; sc_replies_relation s s'; valid_objs' s';
-    pspace_relation (kheap s) (ksPSpace s'); valid_replies s;
+    pspace_relation (kheap s) (ksPSpace s'); valid_replies s; valid_objs s;
     pspace_distinct s; pspace_aligned s; sym_refs (state_refs_of s);
     sym_refs (state_refs_of' s'); sym_refs (list_refs_of_replies' s');
     replyNexts_of s' rp = Some nxt_rp; reply_at rp s\<rbrakk>
-  \<Longrightarrow> sc_with_reply nxt_rp s = None"
+   \<Longrightarrow> sc_with_reply nxt_rp s = None"
   supply opt_mapE[rule del]
-  apply (subgoal_tac "sc_with_reply' nxt_rp s' = None")
-   apply (fastforce simp: sc_replies_relation_sc_with_reply_cross_eq)
-  apply (prop_tac "sc_with_reply' rp s' = None \<and> reply_at' rp s' \<and> pspace_aligned' s' \<and> pspace_distinct' s'")
-   apply (fastforce simp: sc_replies_relation_sc_with_reply_cross_eq
-                   elim!: reply_at_cross pspace_distinct_cross pspace_aligned_cross)
-  apply clarsimp
-  apply (drule sc_with_reply'_NoneD)
-  apply (clarsimp simp: sc_with_reply'_def)
-  apply (rule the_pred_option_None)
-  apply (rule notI)
+  apply (rule ccontr)
+  apply (drule not_Some_eq[THEN iffD2])
+  apply (drule not_None_eq[THEN iffD1])
+  apply (drule not_ex[THEN iffD2])
   apply (erule FalseI)
-  apply (simp add: Ex1_def)
   apply clarsimp
-(*  apply (rename_tac scp replies)
-  apply (prop_tac "heap_path (replyPrevs_of s') (scReplies_of s' scp)
-                                         (takeWhile ((\<noteq>) rp) replies) (Some rp)")
-   apply (subst heap_path_extend[symmetric])
-   apply (clarsimp simp del: heap_path_append)
-   apply (subgoal_tac "rp \<in> set replies")
-    apply (frule (2) heap_list_next_takeWhile_append[where p=rp])
-    apply simp
-   apply (prop_tac "prv_rp \<in> set replies")
-    apply (case_tac "takeWhile ((\<noteq>) prv_rp) replies = replies")
-     apply simp
-     apply (meson heap_path_end_unique option.simps(2))
-    apply simp
-   apply (frule (3) heap_list_prev_cases[OF _ _ _ reply_sym_heap_Prev_Next])
-   apply (erule disjE; simp)
-   apply (prop_tac "replyNexts_of s' prv_rp = Some rp")
-    apply (erule (1) sym_refs_replyNext_replyPrev_sym[THEN iffD2])
-   apply (drule replyNexts_Some_replySCs_None)
-   apply (prop_tac "sc_at' scp s' \<and> (\<exists>ko. ko_at' ko prv_rp s')")
-    apply (rule conjI)
-     apply (fastforce simp: obj_at'_def projectKOs opt_map_Some elim!: pspace_alignedD' pspace_distinctD')
-    apply (clarsimp simp: obj_at'_def projectKOs)
-    apply (rename_tac reply')
-    apply (drule_tac k=reply' in reply_ko_at_valid_objs_valid_reply'[rotated, where p=rp])
-     apply (clarsimp simp: obj_at'_def projectKOs)
-    apply (clarsimp simp: valid_reply'_def valid_bound_obj'_def opt_map_left_Some
-                          obj_at'_def projectKOs)
-    apply (rule_tac x=obj in exI)
-    apply (clarsimp simp: projectKO_opt_reply)
-   apply clarsimp
-   apply (drule (2) sym_refs_scReplies_of_replySc[rotated, symmetric])
-   apply (clarsimp simp: projectKOs obj_at'_def opt_map_None opt_map_left_Some)
+  apply (rename_tac scp)
   apply (rule_tac x=scp in exI)
-  apply (rule conjI)
-   apply (rule_tac x=replies in exI)
-   apply clarsimp
-  apply clarsimp
-  by (metis (no_types) heap_path_extend_takeWhile)
-*) sorry
-
+  apply (frule (1) sym_refs_replyNext_replyPrev_sym[THEN iffD1])
+  apply (frule (4) prev_reply_in_sc_replies)
+    apply (erule (3) reply_at_cross)
+   apply (rule sc_at_cross; simp?)
+   apply (drule sc_with_reply_SomeD)
+   apply (fastforce simp: obj_at_def is_sc_obj_def
+                   elim!: valid_sched_context_size_objsI)
+  apply (clarsimp simp: vs_heap_simps)
+  apply (rename_tac sc n)
+  apply (clarsimp simp: sc_with_reply_def' the_pred_option_def
+                 split: if_split_asm)
+  apply (prop_tac "sc_replies_sc_at (\<lambda>rs. rp \<in> set rs)
+                     (THE x. sc_replies_sc_at (\<lambda>rs. nxt_rp \<in> set rs) x s) s")
+   apply (clarsimp simp: sc_replies_sc_at_def obj_at_def)
+  apply (simp add: conj_commute)
+  apply (rule context_conjI; clarsimp simp: the_equality)
+  using valid_replies_sc_replies_unique by blast
 
 lemma reply_remove_tcb_corres:
   "\<lbrakk> st = Structures_A.thread_state.BlockedOnReply rp;
