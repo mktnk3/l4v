@@ -2983,10 +2983,9 @@ lemma replyPop_makes_unlive:
    replyPop rptr tptr
    \<lbrace>\<lambda>_. ko_wp_at' (Not \<circ> live') rptr\<rbrace>"
   apply (simp add: replyPop_def)
-  apply (wpsimp wp: replyUnlink_makes_unlive cleanReply_obj_at_next_prev_none
-                    hoare_vcg_if_lift threadGet_wp
+  by (wpsimp wp: replyUnlink_makes_unlive cleanReply_obj_at_next_prev_none
+                    hoare_vcg_if_lift
          | wp (once) hoare_drop_imps)+
-  by (clarsimp simp: obj_at'_def)
 
 lemma replyRemove_makes_unlive:
   "\<lbrace>\<lambda>s. weak_sch_act_wf (ksSchedulerAction s) s\<rbrace>
