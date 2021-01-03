@@ -1739,9 +1739,7 @@ lemma replyPop_corres:
   "\<lbrakk>st = Structures_A.thread_state.BlockedOnReply rp;
         st' = Structures_H.thread_state.BlockedOnReply (Some rp);
         reply_relation reply reply'; replyTCB reply' = Some t;
-        reply_tcb reply = Some t; replyNext reply' = Some (Head scp);
-        rp \<in> set (sc_replies sc); next_reply = Head scp;
-        hd (sc_replies sc) = rp\<rbrakk> \<Longrightarrow>
+        replyNext reply' = Some (Head scp); hd (sc_replies sc) = rp\<rbrakk> \<Longrightarrow>
    corres dc
      (valid_objs and pspace_aligned and pspace_distinct and valid_replies
       and st_tcb_at ((=) (Structures_A.thread_state.BlockedOnReply rp)) t
@@ -1749,6 +1747,7 @@ lemma replyPop_corres:
       and (\<lambda>s. sc_with_reply rp s = Some scp)
       and obj_at (\<lambda>ko. \<exists>n. ko = kernel_object.SchedContext sc n) scp
       and bound_sc_tcb_at ((=) tcbsc) t
+      and ko_at (Structures_A.Reply reply) rp
       and reply_sc_reply_at ((=) (Some scp)) rp)
      (valid_objs' and valid_release_queue_iff
       and (\<lambda>s'. sym_refs (list_refs_of_replies' s'))
@@ -1760,10 +1759,43 @@ lemma replyPop_corres:
          reply_unlink_tcb t rp
       od)
      (replyPop rp t)"
+  (is "\<lbrakk> _ ; _ ; _; _; _; _\<rbrakk> \<Longrightarrow> corres _ ?abs_guard ?conc_guard _ _")
   apply add_sym_refs
   apply (rule_tac Q="st_tcb_at' ((=) st') t" in corres_cross_add_guard)
    apply (fastforce dest!: st_tcb_at_coerce_concrete elim!: pred_tcb'_weakenE)
-  apply (clarsimp simp: reply_unlink_sc_def replyPop_def bind_assoc liftM_def)
+  apply (simp add: reply_unlink_sc_def replyPop_def bind_assoc liftM_def)
+                      apply (rule_tac Q="\<lambda>rv. ?abs_guard and K (rv = sc)" in corres_symb_exec_l)
+                         apply (rule corres_gen_asm', simp add: bind_assoc split del: if_split)
+  apply (rule corres_guard_imp)
+    apply (rule corres_split[OF _ get_reply_corres])
+      apply (rename_tac r r')
+      apply (rule_tac P="?abs_guard and K (r = reply)"
+                  and P'="?conc_guard and (\<lambda>s. sym_refs (state_refs_of' s)) and st_tcb_at' ((=) st') t
+                          and K (r' = reply')"
+             in corres_inst)
+apply (rule corres_gen_asm')
+apply (rule corres_gen_asm2')
+apply simp
+      apply (rule corres_guard_imp)
+        apply (rule corres_assert_gen_asm_l)
+(*
+        apply (prop_tac "reply_sc reply = replySc reply'")
+         apply (clarsimp simp: reply_relation_def)
+*)
+(*
+        apply (rule_tac P="?abs_guard "
+                    and P'="?conc_guard and (\<lambda>s. sym_refs (state_refs_of' s)) and st_tcb_at' ((=) st') t
+                            and ko_at' reply' rp"
+               in corres_inst)
+*)
+        apply (rule_tac Q'="\<lambda>rv'. ?conc_guard and st_tcb_at' ((=) st') t and (\<lambda>s'. sym_refs (state_refs_of' s'))
+                             and K (rv' = st')"
+               in corres_symb_exec_r)
+           apply (rename_tac rv')
+           apply (rule corres_gen_asm2', simp only:)
+           apply (rule corres_guard_imp)
+             apply (rule corres_assert_gen_asm2; simp add: bind_assoc isHead_def isReply_def split del: if_split)
+
   sorry
 
 lemma get_tcb_obj_ref_exs_valid[wp]:
@@ -1904,34 +1936,25 @@ lemma reply_remove_corres:
                        apply (simp add: isHead_def)
                        apply (rule corres_guard_imp)
                          apply (rule replyPop_corres[simplified dc_def]; simp)
-                        apply (fastforce elim!: obj_at_weakenE simp: is_reply)
-                       apply fastforce
+                        apply simp
+                       apply simp
 
                      (* rp is in the middle of the reply stack *)
                      (* hd (sc_replies sc) \<noteq> rp & rp \<in> set (sc_replies sc) *)
                       apply (simp add: reply_unlink_sc_def bind_assoc liftM_def split del: if_split)
-                      apply (rule_tac Q="\<lambda>rv. valid_objs and pspace_aligned and pspace_distinct and
-                                   (\<lambda>s. valid_replies_2 (replies_with_sc s) (replies_blocked s)) and
-                                   st_tcb_at ((=) (Structures_A.thread_state.BlockedOnReply rp)) t and
-                                   (\<lambda>s. sym_refs (state_refs_of s)) and
-                                   (\<lambda>s. sc_with_reply rp s = Some scp) and
+                      apply (rule_tac Q="\<lambda>rv. ?abs_guard and (\<lambda>s. sc_with_reply rp s = Some scp) and
                                    obj_at (\<lambda>ko. \<exists>n. ko = kernel_object.SchedContext sc n) scp and
                                    bound_sc_tcb_at ((=) tcbsc) t and ko_at (Structures_A.Reply reply) rp and
                                    reply_sc_reply_at ((=) None) rp and K (rv = sc)" in corres_symb_exec_l)
                          apply (rule corres_gen_asm', simp split del: if_split)
-                         apply (rule_tac Q="\<lambda>rv. valid_objs and pspace_aligned and pspace_distinct and
-                                      (\<lambda>s. valid_replies_2 (replies_with_sc s) (replies_blocked s)) and
-                                      st_tcb_at ((=) (Structures_A.thread_state.BlockedOnReply rp)) t and
-                                      (\<lambda>s. sym_refs (state_refs_of s)) and
-                                      (\<lambda>s. sc_with_reply rp s = Some scp) and
+                         apply (rule_tac Q="\<lambda>rv. ?abs_guard and (\<lambda>s. sc_with_reply rp s = Some scp) and
                                       obj_at (\<lambda>ko. \<exists>n. ko = kernel_object.SchedContext sc n) scp and
                                       bound_sc_tcb_at ((=) tcbsc) t and ko_at (Structures_A.Reply reply) rp and
                                       reply_sc_reply_at ((=) None) rp and K (rv = reply)" in corres_symb_exec_l)
                             apply (rule corres_gen_asm')
                             apply (simp split del: if_split add: bind_assoc)
                             apply (rule corres_guard_imp)
-                              apply (rule_tac Q="valid_objs' and valid_release_queue_iff and ko_at' reply' rp
-                                                 and (\<lambda>s'. sym_refs (list_refs_of_replies' s')) and sc_at' scp
+                              apply (rule_tac Q="?conc_guard and ko_at' reply' rp and sc_at' scp
                                                  and (\<lambda>s'. sym_refs (state_refs_of' s'))
                                                  and (\<lambda>s'. sc_with_reply' rp s' = Some scp)
                                                  and (\<lambda>s'. scReplies_of s' scp = hd_opt (sc_replies sc))
