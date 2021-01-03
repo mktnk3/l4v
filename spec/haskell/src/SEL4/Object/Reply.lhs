@@ -96,8 +96,8 @@ This module specifies the behavior of reply objects.
 >         assert (isHead nextReplyPtrOpt) "the reply must be at the head"
 >         scPtr <- return $ theHeadScPtr nextReplyPtrOpt
 >         sc <- getSchedContext scPtr
->         tcbScPtrOpt <- threadGet tcbSchedContext tcbPtr
 >         setSchedContext scPtr (sc { scReply = prevReplyPtrOpt })
+>         tcbScPtrOpt <- threadGet tcbSchedContext tcbPtr
 >         when (prevReplyPtrOpt /= Nothing) $ do
 >             prevReplyPtr <- return $ fromJust prevReplyPtrOpt
 >             updateReply prevReplyPtr (\reply -> reply { replyNext = replyNext reply })
