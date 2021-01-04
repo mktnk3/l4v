@@ -1735,11 +1735,92 @@ lemma cancel_ipc_corres:
         hd (sc_replies sc) = rp\<rbrakk>
 *)
 
+
+lemma reply_pop_rewrite:
+  "\<lbrakk>rp \<in> set (sc_replies sc); hd (sc_replies sc) = rp\<rbrakk> \<Longrightarrow>
+    monadic_rewrite False True
+    (ko_at (Structures_A.SchedContext sc n) scp and ko_at (Structures_A.Reply reply) rp)
+ (do x <- set_reply rp (reply_sc_update Map.empty reply);
+                x <-
+                case tl (sc_replies sc) of [] \<Rightarrow> return ()
+                | r' # x \<Rightarrow> set_reply_obj_ref reply_sc_update r' (Some scp);
+                x <- set_sc_obj_ref sc_replies_update scp (tl (sc_replies sc));
+                y <- when (tcbsc = None) (sched_context_donate scp t);
+                reply_unlink_tcb t rp
+             od)
+ (do x <- set_sc_obj_ref sc_replies_update scp (tl (sc_replies sc));
+                x <-
+                case tl (sc_replies sc) of [] \<Rightarrow> return ()
+                | r' # x \<Rightarrow> set_reply_obj_ref reply_sc_update r' (Some scp);
+                x <- set_reply rp (reply_sc_update Map.empty reply);
+                y <- when (tcbsc = None) (sched_context_donate scp t);
+                reply_unlink_tcb t rp
+             od)"
+  apply (simp add: monadic_rewrite_def, safe)
+  apply (rule monad_state_eqI)
+
+(*
+  apply (simp add: reply_unlink_sc_def bind_assoc)
+  apply (rule monadic_rewrite_bind_tail)
+   defer
+   apply (rule get_object_sp)
+  apply (case_tac obj; clarsimp simp: monadic_rewrite_refl3 set_object_def)
+  apply (rule monadic_rewrite_bind_tail)
+   defer
+   apply (rule get_object_sp)
+  apply (clarsimp simp: monadic_rewrite_def obj_at_def is_sc_obj_def)
+  done*) sorry
+
+lemma update_sc_replies_update_pop_corres:
+  "\<lbrakk> replyNext reply' = Some (Head scp)  \<rbrakk> \<Longrightarrow>
+   corres dc ((\<lambda>s. (sc_replies_of s |> hd_opt) ptr = Some rp) and valid_objs and pspace_aligned and pspace_distinct)
+             \<top>
+          (update_sched_context ptr (sc_replies_update tl))
+         (do sc' \<leftarrow> getSchedContext ptr;
+            setSchedContext ptr (scReply_update (\<lambda>_. replyPrev reply') sc')
+          od)"
+  apply (rule_tac Q="sc_at' ptr" in corres_cross_add_guard)
+   apply (fastforce dest!: state_relationD simp: obj_at_def is_sc_obj_def vs_heap_simps
+                    elim!: sc_at_cross valid_objs_valid_sched_context_size)
+  apply (rule corres_symb_exec_r)
+     apply (rule_tac P'="ko_at' sc' ptr" in corres_inst)
+     apply (rule_tac Q="sc_obj_at (objBits sc' - minSchedContextBits) ptr" in corres_cross_add_abs_guard)
+      apply (fastforce dest!: state_relationD ko_at'_cross)
+     apply (rule corres_guard_imp)
+       apply (rule_tac P="(\<lambda>s. (sc_replies_of s |> hd_opt) ptr = Some rp)
+                          and sc_obj_at (objBits sc' - minSchedContextBits) ptr"
+                  and n1="objBits sc' - minSchedContextBits"
+                            in monadic_rewrite_corres[OF _ update_sched_context_rewrite])
+       apply (rule corres_symb_exec_l)
+          apply (rule corres_guard_imp)
+            apply (rule_tac P="(\<lambda>s. kheap s ptr = Some (kernel_object.SchedContext sc (objBits sc'
+                                                                                       - minSchedContextBits)))
+                               and K (rp = hd (sc_replies sc))"
+                        and P'="ko_at' sc' ptr"  in corres_inst)
+            apply (rule corres_gen_asm')
+            apply (rule_tac n="objBits sc' - minSchedContextBits"
+                   in setSchedContext_sc_replies_relation_corres)
+              apply (clarsimp simp: sc_relation_def)
+             apply clarsimp
+            apply (clarsimp simp: objBits_simps)
+           apply simp
+          apply simp
+         apply (wpsimp wp: get_sched_context_exs_valid simp: is_sc_obj_def obj_at_def)
+          apply (rename_tac ko xs; case_tac ko; clarsimp)
+         apply simp
+        apply (wpsimp simp: obj_at_def is_sc_obj_def vs_heap_simps)
+       apply (wpsimp wp: get_sched_context_no_fail)
+      apply (clarsimp simp: obj_at_def is_sc_obj_def)
+     apply simp
+    apply wpsimp+
+  sorry
+
+
 lemma replyPop_corres:
   "\<lbrakk>st = Structures_A.thread_state.BlockedOnReply rp;
         st' = Structures_H.thread_state.BlockedOnReply (Some rp);
         reply_relation reply reply'; replyTCB reply' = Some t;
-        replyNext reply' = Some (Head scp); hd (sc_replies sc) = rp\<rbrakk> \<Longrightarrow>
+        replyNext reply' = Some (Head scp); rp \<in> set (sc_replies sc); hd (sc_replies sc) = rp\<rbrakk> \<Longrightarrow>
    corres dc
      (valid_objs and pspace_aligned and pspace_distinct and valid_replies
       and st_tcb_at ((=) (Structures_A.thread_state.BlockedOnReply rp)) t
@@ -1759,7 +1840,7 @@ lemma replyPop_corres:
          reply_unlink_tcb t rp
       od)
      (replyPop rp t)"
-  (is "\<lbrakk> _ ; _ ; _; _; _; _\<rbrakk> \<Longrightarrow> corres _ ?abs_guard ?conc_guard _ _")
+  (is "\<lbrakk> _ ; _ ; _; _; _; _; _\<rbrakk> \<Longrightarrow> corres _ ?abs_guard ?conc_guard _ _")
   apply add_sym_refs
   apply (rule_tac Q="st_tcb_at' ((=) st') t" in corres_cross_add_guard)
    apply (fastforce dest!: st_tcb_at_coerce_concrete elim!: pred_tcb'_weakenE)
@@ -1777,7 +1858,24 @@ apply (rule corres_gen_asm')
 apply (rule corres_gen_asm2')
 apply simp
       apply (rule corres_guard_imp)
-        apply (rule corres_assert_gen_asm_l)
+        apply (rule corres_symb_exec_l)
+      apply (rule corres_guard_imp)
+
+apply (rule corres_symb_exec_r)
+apply (rename_tac state)
+      apply (rule_tac P="?abs_guard and reply_sc_reply_at ((=) None) rp"
+                  and P'="?conc_guard and (\<lambda>s. sym_refs (state_refs_of' s)) and st_tcb_at' ((=) st') t
+                          and K (state = st')"
+             in corres_inst)
+apply (rule corres_gen_asm2')
+apply (simp add: bind_assoc isReply_def isHead_def)
+apply (subst bind_assoc[symmetric, where m="getSchedContext _"])
+apply (rule corres_guard_imp)
+apply (rule corres_split[OF _ update_sc_replies_update_pop_corres])
+
+apply (case_tac "sc_replies sc"; simp)
+apply (rename_tac list; case_tac list; simp)
+
 (*
         apply (prop_tac "reply_sc reply = replySc reply'")
          apply (clarsimp simp: reply_relation_def)
