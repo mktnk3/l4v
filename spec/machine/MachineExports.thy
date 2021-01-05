@@ -47,6 +47,7 @@ requalify_consts
   getCurrentTime
   maxIRQ
   minIRQ
+  timerIRQ
   word_size_bits
   clearMemory
   non_kernel_IRQs
