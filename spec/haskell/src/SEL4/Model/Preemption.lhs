@@ -30,7 +30,7 @@ Objects of this type are thrown from an "ExceptT" monad transformer when the sim
 
 The "KernelP" monad is a transformation of the "Kernel" monad used for functions which may be preempted. Any function in this monad must not leave the kernel in an inconsistent state when calling other functions in the monad (though the model has no means of effectively enforcing this restriction).
 
-> type KernelP a = ExceptT IRQ Kernel a
+> type KernelP a = ExceptT () Kernel a
 
 \subsection{Functions}
 
@@ -59,5 +59,6 @@ In preemptible code, the kernel may explicitly mark a preemption point with the 
 >              sufficient <- refillSufficient csc consumed
 >              domExp <- isCurDomainExpired
 >              if (not (active && sufficient) || domExp)
->                   then throwError irq
+>                   then throwError ()
 >                   else return ()
+
