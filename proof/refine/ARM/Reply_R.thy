@@ -780,8 +780,8 @@ lemma bindReplySc_corres:
         apply (clarsimp simp: replies_with_sc_def image_def)
         apply (drule_tac x=scptr in spec)
         apply (clarsimp simp: sc_at_pred_n_def obj_at_def)
-       apply (erule (1) sc_replies_relation_prevs_list)
-       apply (clarsimp simp: obj_at'_real_def ko_wp_at'_def projectKO_sc)
+       apply (fastforce dest!: sc_replies_relation_prevs_list'
+                         simp: opt_map_left_Some obj_at'_def projectKOs)
       apply (erule (1) sc_replies_relation_scReply[symmetric])
       apply (clarsimp simp: obj_at'_real_def  ko_wp_at'_def projectKO_sc)
      apply wpsimp+
@@ -1047,19 +1047,20 @@ lemma replyPrevs_of_replyNext_update:
                  split: option.split_asm reply_next.split_asm)
   by (fastforce simp: projectKO_opt_reply opt_map_def)
 
-lemma scs_of'_reply_update:
-  "reply_at' rp s' \<Longrightarrow>
-      scs_of' (s'\<lparr>ksPSpace := ksPSpace s'(rp \<mapsto> KOReply reply)\<rparr>) = scs_of' s'"
-  apply (clarsimp simp: obj_at'_def projectKOs isNext_def
+lemma scs_of'_non_sc_update:
+  "obj_at' (\<lambda>_::'a::pspace_storable. True) rp s' \<Longrightarrow> \<not> sc_at' rp s' \<Longrightarrow>
+   koTypeOf (injectKO v) \<noteq> SchedContextT \<Longrightarrow>
+      scs_of' (s'\<lparr>ksPSpace := ksPSpace s'(rp \<mapsto> injectKO v)\<rparr>) = scs_of' s'"
+  apply (clarsimp simp: obj_at'_def projectKOs isNext_def  
                  split: option.split_asm reply_next.split_asm)
-  by (fastforce simp: projectKO_opt_sc opt_map_def)
+  by (fastforce simp: opt_map_def projectKO_opts_defs split: kernel_object.splits)
 
 lemma sc_replies_relation_replyNext_update:
   "\<lbrakk>sc_replies_relation s s'; ko_at' reply' rp s'\<rbrakk>
      \<Longrightarrow> sc_replies_relation s (s'\<lparr>ksPSpace := (ksPSpace s')(rp \<mapsto>
                                            KOReply (reply' \<lparr> replyNext := v \<rparr>))\<rparr>)"
-  by (clarsimp simp: scs_of'_reply_update[simplified] obj_at'_def
-                     replyPrevs_of_replyNext_update[simplified])
+  by (clarsimp simp: scs_of'_non_sc_update[where 'a=reply and v="reply' \<lparr> replyNext := v \<rparr>", simplified]
+                     projectKOs obj_at'_def replyPrevs_of_replyNext_update[simplified])
 
 (* an example of an sr_inv lemma *)
 lemma replyNext_Next_update_sr_inv:
@@ -1089,7 +1090,7 @@ lemma replyNext_Next_update_sr_inv:
 
 lemma sym_refs_replySc_scReplies_of:
   "\<lbrakk>reply_at' rp s'; sym_refs (state_refs_of' s'); sc_at' scp s'\<rbrakk>
-   \<Longrightarrow> (replies_of' s' |> replySc) rp = Some scp \<longleftrightarrow> scReplies_of s' scp = Some rp"
+   \<Longrightarrow> replySCs_of s' rp = Some scp \<longleftrightarrow> scReplies_of s' scp = Some rp"
   apply (rule iffI)
    apply (drule_tac tp=SCReply and x=rp and y=scp in sym_refsE;
           clarsimp simp: get_refs_def2 state_refs_of'_def obj_at'_def projectKOs opt_map_left_Some)
