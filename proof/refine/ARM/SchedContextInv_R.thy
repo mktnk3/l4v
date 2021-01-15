@@ -70,6 +70,49 @@ primrec sc_ctrl_inv_rel ::
   "sc_ctrl_inv_rel (Invocations_A.InvokeSchedControlConfigure sc budget period refills badge) sci' =
     (sci' = InvokeSchedControlConfigure sc budget period refills badge)"
 
+lemma decodeSchedContext_Bind_wf:
+  "\<lbrace> valid_cap' (SchedContextCap sc n) and invs' and sch_act_simple and ex_nonz_cap_to' sc and
+     (\<lambda>s. \<forall>cap\<in>set excaps. \<forall>r\<in>zobj_refs' cap. ex_nonz_cap_to' r s) and
+     (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
+   decodeSchedContext_Bind sc excaps
+   \<lbrace>valid_sc_inv'\<rbrace>, -"
+  apply (clarsimp simp: decodeSchedContext_Bind_def)
+  apply (wpsimp wp: gts_wp' threadGet_wp getNotification_wp
+              simp: scReleased_def scActive_def isBlocked_def refillReady_def)
+  apply (clarsimp simp: valid_cap'_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
+  done
+
+lemma decodeSchedContext_UnbindObject_wf:
+  "\<lbrace> valid_cap' (SchedContextCap sc n) and invs' and sch_act_simple and ex_nonz_cap_to' sc and
+     (\<lambda>s. \<forall>cap\<in>set excaps. \<forall>r\<in>zobj_refs' cap. ex_nonz_cap_to' r s) and
+     (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
+   decodeSchedContext_UnbindObject sc excaps
+   \<lbrace>valid_sc_inv'\<rbrace>, -"
+  apply (clarsimp simp: decodeSchedContext_UnbindObject_def)
+  apply (wpsimp wp: gts_wp' threadGet_wp getNotification_wp
+              simp: scReleased_def scActive_def isBlocked_def refillReady_def)
+  apply (clarsimp simp: valid_cap'_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
+  done
+
+lemma decodeSchedContext_YieldTo_wf:
+  "\<lbrace> valid_cap' (SchedContextCap sc n) and invs' and sch_act_simple and ex_nonz_cap_to' sc \<rbrace>
+   decodeSchedContext_YieldTo sc args
+   \<lbrace>valid_sc_inv'\<rbrace>, -"
+  apply (clarsimp simp: decodeSchedContext_YieldTo_def)
+find_theorems decode_sched_context_invocation
+find_theorems getObject name: wp
+  apply (wpsimp wp: gts_wp' threadGet_wp getNotification_wp getTCB_wp
+              simp: scReleased_def scActive_def isBlocked_def refillReady_def)
+  apply (clarsimp simp: valid_cap'_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+  apply (clarsimp simp: pred_tcb_at'_def obj_at'_def projectKOs)
+
+  done
+
 (* FIXME RT: preconditions can be reduced, this is what is available at the call site: *)
 lemma decodeSchedContextInvocation_wf:
   "\<lbrace> valid_cap' (SchedContextCap sc n) and invs' and sch_act_simple and ex_nonz_cap_to' sc and
@@ -77,7 +120,23 @@ lemma decodeSchedContextInvocation_wf:
      (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
    decodeSchedContextInvocation label sc excaps args
    \<lbrace>valid_sc_inv'\<rbrace>, -"
-  sorry
+  apply (simp       add: decodeSchedContextInvocation_def  Let_def split_def
+
+
+              split del: if_split cong: if_cong list.case_cong)
+find_theorems decode_sched_context_invocation
+thm corres_stateAssert_add_assertion
+thm decodeSchedContext_Bind_def
+  apply (rule hoare_pre)
+   apply (wp decodeSchedContext_Bind_wf decodeSchedContext_UnbindObject_wf
+             | simp    add: o_def split_def
+                 split del: if_split
+             | wpc
+             | rule hoare_drop_imps)+
+  apply (clarsimp simp del: length_greater_0_conv
+                 split del: if_split)
+  apply (simp del: length_greater_0_conv add: valid_updateCapDataI)
+  done
 
 (* FIXME RT: preconditions can be reduced, this is what is available at the call site: *)
 lemma decodeSchedControlInvocation_wf:
