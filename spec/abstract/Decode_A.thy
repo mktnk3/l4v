@@ -550,7 +550,6 @@ where
           ct_mcp \<leftarrow> liftE $ thread_get tcb_mcpriority ct_ptr;
           whenE (prios > ct_mcp) $ throwError IllegalOperation
       odE;
-\<^cancel>\<open>     whenE (sc_yield_from sc \<noteq> None) $ throwError IllegalOperation;\<close>
       ct_ptr \<leftarrow> liftE $ gets cur_thread;
       yt_ptr \<leftarrow> liftE $ thread_get tcb_yield_to ct_ptr;
       whenE (yt_ptr \<noteq> None) $ throwError IllegalOperation;
