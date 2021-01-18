@@ -119,15 +119,15 @@ lemma valid_SchedContextCap_sc_at':
 
 (* FIXME RT: preconditions can be reduced, this is what is available at the call site: *)
 lemma decodeSchedContextInvocation_wf:
-  "\<lbrace> valid_cap' (SchedContextCap sc n) and sch_act_simple and ex_nonz_cap_to' sc and
+  "\<lbrace> valid_cap' (SchedContextCap sc n) and ex_nonz_cap_to' sc and
      (\<lambda>s. \<forall>cap\<in>set excaps. \<forall>r\<in>zobj_refs' cap. ex_nonz_cap_to' r s) and
      (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
    decodeSchedContextInvocation label sc excaps args
    \<lbrace>valid_sc_inv'\<rbrace>, -"
-  apply (simp add: decodeSchedContextInvocation_def  Let_def split_def)
-   apply (wpsimp wp: decodeSchedContext_Bind_wf[where n=n]
-                     decodeSchedContext_UnbindObject_wf[where n=n]
-                     decodeSchedContext_YieldTo_wf[where n=n])
+  apply (simp add: decodeSchedContextInvocation_def)
+  apply (wpsimp wp: decodeSchedContext_Bind_wf[where n=n]
+                    decodeSchedContext_UnbindObject_wf[where n=n]
+                    decodeSchedContext_YieldTo_wf[where n=n])
   apply (fastforce dest: valid_SchedContextCap_sc_at')
   done
 
@@ -138,7 +138,33 @@ lemma decodeSchedControlInvocation_wf:
      (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
    decodeSchedControlInvocation label args excaps
    \<lbrace>valid_sc_ctrl_inv'\<rbrace>, -"
-  sorry
+thm  decode_sched_control_invocation_def decodeSchedControlInvocation_def[unfolded decodeSchedControl_Configure_def]
+thm decodeSchedControl_Configure_def
+thm refillAbsoluteMax_def refillAbsoluteMax'_def
+find_theorems refillAbsoluteMax'
+  apply (simp add: decodeSchedControlInvocation_def decodeSchedControl_Configure_def Let_def split_def)
+thm decodeSchedControl_Configure_def
+find_theorems decode_sched_control_invocation
+thm parseTimeArg_def
+apply (wpsimp simp: decodeSchedControl_Configure_def timeArgSize_def)
+
+apply safe
+defer
+
+  apply (drule_tac x="hd excaps" in bspec, fastforce)
+apply (cases "hd excaps"; clarsimp simp: isSchedContextCap_def)
+
+apply (clarsimp simp: MIN_REFILLS_def minRefills_def)
+
+
+
+  apply (clarsimp simp: valid_cap'_def capSchedContextPtr_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+
+  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
+  apply (clarsimp simp: valid_cap'_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
 
 lemma decode_sc_inv_corres:
   "list_all2 cap_relation excaps excaps' \<Longrightarrow>
