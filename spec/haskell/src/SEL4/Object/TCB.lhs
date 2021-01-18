@@ -706,8 +706,7 @@ The domain cap is invoked to set the domain of a given TCB object to a given val
 >     ct <- withoutFailure $ getObject ctPtr
 >     priority <- withoutFailure $ threadGet tcbPriority $ fromJust $ scTCB sc
 >     when (priority > tcbMCP ct) $ throw IllegalOperation
->     scPtrOpt <- tcbYieldTo ct
->     when (scPtrOpt /= Nothing) $ throw IllegalOperation
+>     when (tcbYieldTo ct /= Nothing) $ throw IllegalOperation
 >     return $ InvokeSchedContextYieldTo scPtr buffer
 
 > decodeSchedContextInvocation :: Word -> PPtr SchedContext -> [Capability] -> Maybe (PPtr Word) ->
