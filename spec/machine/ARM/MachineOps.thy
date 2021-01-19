@@ -116,9 +116,16 @@ where
 consts' maxTimer_us :: "64 word"
 consts' timerPrecision :: "64 word"
 consts' max_ticks_to_us :: "64 word"
-(*
-consts' us_to_ticks :: "64 word \<Rightarrow> 64 word"
-*)
+consts' max_us_to_ticks :: "64 word"
+
+text \<open>
+  This matches @{text "60 * 60 * MS_IN_S * US_IN_US"} because it should be in micro-seconds.
+\<close>
+definition
+  MAX_PERIOD_US :: "64 word"
+where
+  "MAX_PERIOD_US \<equiv> 60 * 60 * 1000 * 1000"
+
 end
 
 qualify ARM (in Arch)
@@ -140,6 +147,9 @@ and
   us_to_ticks_nonzero: "y \<noteq> 0 \<Longrightarrow> us_to_ticks y \<noteq> 0"
 and
   kernelWCET_ticks_no_overflow: "4 * unat (us_to_ticks (kernelWCET_us)) \<le> unat (max_word :: 64 word)"
+and
+  us_to_ticks_mult: "\<forall>n a. (unat n * unat (us_to_ticks a) \<le> unat (max_word :: 64 word))
+                           \<longrightarrow> n * us_to_ticks a = us_to_ticks (n * a)"
 
 axiomatization
   ticks_to_us :: "64 word \<Rightarrow> 64 word"
