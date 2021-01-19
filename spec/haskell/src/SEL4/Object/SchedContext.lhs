@@ -19,7 +19,7 @@ This module uses the C preprocessor to select a target architecture.
 >         invokeSchedControlConfigure, getSchedContext,
 >         schedContextUnbindTCB, schedContextBindTCB, schedContextResume,
 >         setSchedContext, updateTimeStamp, commitTime, rollbackTime,
->         refillHd, refillTl, minBudget, minBudgetUs, refillCapacity, refillBudgetCheck,
+>         refillHd, refillTl, minBudget, minBudgetUs, maxPeriodUs, refillCapacity, refillBudgetCheck,
 >         refillBudgetCheckRoundRobin, updateScPtr, emptyRefill, scBitsFromRefillLength,
 >         isCurDomainExpired, refillUnblockCheck, mapScPtr,
 >         refillReady, tcbReleaseEnqueue, tcbReleaseDequeue, refillSufficient, postpone,
