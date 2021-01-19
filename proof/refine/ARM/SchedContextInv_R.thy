@@ -43,13 +43,17 @@ primrec valid_sc_inv' :: "sched_context_invocation \<Rightarrow> kernel_state \<
                 bound_yt_tcb_at' ((=) None) ct s \<and>
                 obj_at' (\<lambda>sc. \<exists>t. scTCB sc = Some t \<and> t \<noteq> ct) scptr s))"
 
-(* FIXME RT: valid_refills_number is probably wrong for Haskell *)
+definition
+  valid_refills_number' :: "nat \<Rightarrow> nat \<Rightarrow> bool"
+where
+  "valid_refills_number' max_refills n \<equiv> max_refills \<le> refillAbsoluteMax' (minSchedContextBits + n)"
+
 primrec valid_sc_ctrl_inv' :: "sched_control_invocation \<Rightarrow> kernel_state \<Rightarrow> bool" where
   "valid_sc_ctrl_inv' (InvokeSchedControlConfigure scptr budget period mrefills badge) =
-     ((\<lambda>s. \<exists>n. sc_at'_n n scptr s \<and> valid_refills_number mrefills n) and
+     ((\<lambda>s. \<exists>n. sc_at'_n n scptr s \<and> valid_refills_number' mrefills n) and
       ex_nonz_cap_to' scptr and K (MIN_REFILLS \<le> mrefills) and
-      K (budget \<le> MAX_SC_PERIOD \<and> budget \<ge> MIN_BUDGET \<and>
-         period \<le> MAX_SC_PERIOD \<and> budget \<ge> MIN_BUDGET \<and>
+      K (budget \<le> MAX_PERIOD \<and> budget \<ge> MIN_BUDGET \<and>
+         period \<le> MAX_PERIOD \<and> budget \<ge> MIN_BUDGET \<and>
          budget \<le> period))"
 
 primrec sc_inv_rel :: "Invocations_A.sched_context_invocation \<Rightarrow> sched_context_invocation \<Rightarrow> bool"
@@ -67,8 +71,8 @@ primrec sc_inv_rel :: "Invocations_A.sched_context_invocation \<Rightarrow> sche
 
 primrec sc_ctrl_inv_rel ::
   "Invocations_A.sched_control_invocation \<Rightarrow> sched_control_invocation \<Rightarrow> bool" where
-  "sc_ctrl_inv_rel (Invocations_A.InvokeSchedControlConfigure sc budget period refills badge) sci' =
-    (sci' = InvokeSchedControlConfigure sc budget period refills badge)"
+  "sc_ctrl_inv_rel (Invocations_A.InvokeSchedControlConfigure sc budget period max_refills badge) sci' =
+    (sci' = InvokeSchedControlConfigure sc budget period max_refills badge)"
 
 lemma decodeSchedContext_Bind_wf:
   "\<lbrace> valid_cap' (SchedContextCap sc n) and ex_nonz_cap_to' sc and
@@ -138,8 +142,12 @@ lemma decodeSchedControlInvocation_wf:
      (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
    decodeSchedControlInvocation label args excaps
    \<lbrace>valid_sc_ctrl_inv'\<rbrace>, -"
-thm  decode_sched_control_invocation_def decodeSchedControlInvocation_def[unfolded decodeSchedControl_Configure_def]
+thm refill_update_def
+thm  decode_sched_control_invocation_def  decodeSchedControlInvocation_def[unfolded decodeSchedControl_Configure_def]
+thm max_num_refills_def
+thm max_refills_cap_def[simplified max_num_refills_def]
 thm decodeSchedControl_Configure_def
+thm refillAbsoluteMax_def[simplified refillAbsoluteMax'_def]  max_refills_cap_def[simplified max_num_refills_def]
 thm refillAbsoluteMax_def refillAbsoluteMax'_def
 find_theorems refillAbsoluteMax'
   apply (simp add: decodeSchedControlInvocation_def decodeSchedControl_Configure_def Let_def split_def)
@@ -156,8 +164,80 @@ apply (cases "hd excaps"; clarsimp simp: isSchedContextCap_def)
 
 apply (clarsimp simp: MIN_REFILLS_def minRefills_def)
 
+apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def])
+
+apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def]
+MIN_BUDGET_def kernelWCET_ticks_def)
+find_theorems decode_sched_control_invocation
+  apply (clarsimp simp: valid_refills_number_def max_refills_cap_def
+                        MIN_BUDGET_def MIN_BUDGET_US_def MAX_PERIOD_def not_less minBudgetUs_def
+                        us_to_ticks_mono[simplified mono_def] kernelWCET_ticks_def)
+  apply (insert us_to_ticks_mult)
+  using kernelWCET_ticks_no_overflow apply clarsimp
+  using mono_def apply blast
 
 
+apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def])
+
+apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def]
+MIN_BUDGET_def kernelWCET_ticks_def)
+find_theorems decode_sched_control_invocation
+  apply (clarsimp simp: valid_refills_number_def max_refills_cap_def
+                        MIN_BUDGET_def MIN_BUDGET_US_def MAX_PERIOD_def not_less minBudgetUs_def
+                        us_to_ticks_mono[simplified mono_def] kernelWCET_ticks_def)
+  apply (insert us_to_ticks_mult)
+  using kernelWCET_ticks_no_overflow apply clarsimp
+  using mono_def apply blast
+
+apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def])
+
+sorry
+
+
+
+
+
+
+
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+  apply (clarsimp simp: valid_cap'_def)
+thm valid_cap_def
+apply (cases "hd excaps"; clarsimp simp: isSchedContextCap_def)
+apply (rule_tac x=x132 in exI)
+apply clarsimp
+thm refillAbsoluteMax_def refillAbsoluteMax'_def valid_refills_number_def
+\<comment> \<open>  So we'd like valid_refills_number' to be mrefills \<le> refillAbsoluteMax (minSchedContextBits + n)           \<close>
+apply (clarsimp simp: valid_refills_number'_def )
+apply (clarsimp simp: refillAbsoluteMax_def refillAbsoluteMax'_def)
+find_theorems refillAbsoluteMax'
+thm schedContextZeroRefillMax_def
+apply (drule not_less[THEN iffD1])+
+apply (rule_tac y="(shiftL (Suc 0) x132 - schedContextStructSize) div refillSizeBytes" in order_trans)
+apply simp
+apply (clarsimp simp: minSchedContextBits_def)
+
+thm not_less
+  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce)+
+  apply (clarsimp simp: valid_cap'_def)
+  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
+  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
+
+
+apply (clarsimp simp: ko_wp_at'_def)
+
+
+
+
+thm us_to_ticks_mono[simplified mono_def, rule_format]
+apply (rule us_to_ticks_mono[simplified mono_def, rule_format])
+apply (clarsimp simp: ARM.MAX_PERIOD_US_def maxPeriodUs_def not_le)
+apply (prop_tac "0xD693A400 = SchedContextDecls_H.maxPeriodUs")
+thm maxPeriodUs_def
+apply (clarsimp simp: ARM.MAX_PERIOD_US_def maxPeriodUs_def not_less)
+apply (clarsimp simp: ARM.MAX_PERIOD_US_def maxPeriodUs_def not_less)
+thm not_less[THEN iffD1]
+apply (frule not_less[THEN iffD1])+
   apply (clarsimp simp: valid_cap'_def capSchedContextPtr_def)
   apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
 
@@ -171,8 +251,40 @@ lemma decode_sc_inv_corres:
    corres (ser \<oplus> sc_inv_rel)
           (invs and valid_sched and sc_at sc and (\<lambda>s. \<forall>x\<in>set excaps. s \<turnstile> x))
           (invs' and (\<lambda>s. \<forall>x\<in>set excaps'. valid_cap' x s))
-          (decode_sched_context_invocation (mi_label mi) sc excaps args')
-          (decodeSchedContextInvocation (mi_label mi) sc excaps' args')"
+          (decode_sched_context_invocation labels sc excaps args')
+          (decodeSchedContextInvocation labels sc excaps' args')"
+
+  apply (clarsimp simp: decode_sched_context_invocation_def decodeSchedContextInvocation_def split del: if_split)
+thm whenE_throwError_corres_initial
+thm ser_def[unfolded syscall_error_map_def]
+apply (cases "gen_invocation_type labels"; clarsimp split: gen_invocation_labels.split split del: if_split)
+apply (intro conjI impI)
+term invocationType
+sorry
+term GenInvocationLabel
+apply (clarsimp simp: corres_underlying_def throwError_def returnOk_def return_def simp del: ser_def)
+sledgehammer
+  apply (simp add: decode_irq_handler_invocation_def decodeIRQHandlerInvocation_def
+                 split del: if_split)
+  apply (cases caps)
+   apply (simp add: returnOk_def split: invocation_label.split gen_invocation_labels.split list.splits
+split del: if_split)
+   defer
+  apply (clarsimp simp: list_all2_Cons1 split del: if_split)
+  apply (simp add: returnOk_def split: invocation_label.split gen_invocation_labels.split list.splits)
+  apply (clarsimp split: cap_relation_split_asm arch_cap.split_asm simp: returnOk_def)
+  done
+   apply (simp add: returnOk_def split: invocation_label.split gen_invocation_labels.split list.splits split del: if_split)
+
+apply (intro conjI impI allI)
+   apply (simp add: returnOk_def split: invocation_label.split gen_invocation_labels.split list.splits split del: if_split)
+
+
+thm decode_tcb_invocation_def
+
+apply (clarsimp simp: genInvocationType_def)
+
+find_theorems gen_invocation_type
   sorry
 
 lemma decode_sc_ctrl_inv_corres:
