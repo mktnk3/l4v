@@ -46,7 +46,7 @@ primrec valid_sc_inv' :: "sched_context_invocation \<Rightarrow> kernel_state \<
 definition
   valid_refills_number' :: "nat \<Rightarrow> nat \<Rightarrow> bool"
 where
-  "valid_refills_number' max_refills n \<equiv> max_refills \<le> refillAbsoluteMax' (minSchedContextBits + n)"
+  "valid_refills_number' max_refills n \<equiv> max_refills \<le> refillAbsoluteMax' n"
 
 primrec valid_sc_ctrl_inv' :: "sched_control_invocation \<Rightarrow> kernel_state \<Rightarrow> bool" where
   "valid_sc_ctrl_inv' (InvokeSchedControlConfigure scptr budget period mrefills badge) =
@@ -137,114 +137,22 @@ lemma decodeSchedContextInvocation_wf:
 
 (* FIXME RT: preconditions can be reduced, this is what is available at the call site: *)
 lemma decodeSchedControlInvocation_wf:
-  "\<lbrace> invs' and sch_act_simple and
-     (\<lambda>s. \<forall>cap\<in>set excaps. \<forall>r\<in>zobj_refs' cap. ex_nonz_cap_to' r s) and
+  "\<lbrace> (\<lambda>s. \<forall>cap\<in>set excaps. \<forall>r\<in>zobj_refs' cap. ex_nonz_cap_to' r s) and
      (\<lambda>s. \<forall>x\<in>set excaps. valid_cap' x s) \<rbrace>
    decodeSchedControlInvocation label args excaps
    \<lbrace>valid_sc_ctrl_inv'\<rbrace>, -"
-thm refill_update_def
-thm  decode_sched_control_invocation_def  decodeSchedControlInvocation_def[unfolded decodeSchedControl_Configure_def]
-thm max_num_refills_def
-thm max_refills_cap_def[simplified max_num_refills_def]
-thm decodeSchedControl_Configure_def
-thm refillAbsoluteMax_def[simplified refillAbsoluteMax'_def]  max_refills_cap_def[simplified max_num_refills_def]
-thm refillAbsoluteMax_def refillAbsoluteMax'_def
-find_theorems refillAbsoluteMax'
-  apply (simp add: decodeSchedControlInvocation_def decodeSchedControl_Configure_def Let_def split_def)
-thm decodeSchedControl_Configure_def
-find_theorems decode_sched_control_invocation
-thm parseTimeArg_def
-apply (wpsimp simp: decodeSchedControl_Configure_def timeArgSize_def)
-
-apply safe
-defer
-
-  apply (drule_tac x="hd excaps" in bspec, fastforce)
-apply (cases "hd excaps"; clarsimp simp: isSchedContextCap_def)
-
-apply (clarsimp simp: MIN_REFILLS_def minRefills_def)
-
-apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def])
-
-apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def]
-MIN_BUDGET_def kernelWCET_ticks_def)
-find_theorems decode_sched_control_invocation
-  apply (clarsimp simp: valid_refills_number_def max_refills_cap_def
-                        MIN_BUDGET_def MIN_BUDGET_US_def MAX_PERIOD_def not_less minBudgetUs_def
-                        us_to_ticks_mono[simplified mono_def] kernelWCET_ticks_def)
+  unfolding decodeSchedControlInvocation_def
+  apply (case_tac "genInvocationType label"; simp; wpsimp?)
+  apply (wpsimp simp: decodeSchedControl_Configure_def)
+  apply (cases excaps; simp)
+  apply (rename_tac a list, case_tac a; simp add: isSchedContextCap_def)
+  apply (clarsimp simp: valid_cap'_def  ko_wp_at'_def scBits_simps valid_refills_number'_def
+                        MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono
+                        MIN_BUDGET_def kernelWCET_ticks_def timeArgSize_def minBudgetUs_def
+                        MIN_REFILLS_def minRefills_def not_less)
   apply (insert us_to_ticks_mult)
   using kernelWCET_ticks_no_overflow apply clarsimp
-  using mono_def apply blast
-
-
-apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def])
-
-apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def]
-MIN_BUDGET_def kernelWCET_ticks_def)
-find_theorems decode_sched_control_invocation
-  apply (clarsimp simp: valid_refills_number_def max_refills_cap_def
-                        MIN_BUDGET_def MIN_BUDGET_US_def MAX_PERIOD_def not_less minBudgetUs_def
-                        us_to_ticks_mono[simplified mono_def] kernelWCET_ticks_def)
-  apply (insert us_to_ticks_mult)
-  using kernelWCET_ticks_no_overflow apply clarsimp
-  using mono_def apply blast
-
-apply (clarsimp simp: MAX_PERIOD_def maxPeriodUs_def usToTicks_def us_to_ticks_mono[simplified mono_def])
-
-sorry
-
-
-
-
-
-
-
-  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
-  apply (clarsimp simp: valid_cap'_def)
-thm valid_cap_def
-apply (cases "hd excaps"; clarsimp simp: isSchedContextCap_def)
-apply (rule_tac x=x132 in exI)
-apply clarsimp
-thm refillAbsoluteMax_def refillAbsoluteMax'_def valid_refills_number_def
-\<comment> \<open>  So we'd like valid_refills_number' to be mrefills \<le> refillAbsoluteMax (minSchedContextBits + n)           \<close>
-apply (clarsimp simp: valid_refills_number'_def )
-apply (clarsimp simp: refillAbsoluteMax_def refillAbsoluteMax'_def)
-find_theorems refillAbsoluteMax'
-thm schedContextZeroRefillMax_def
-apply (drule not_less[THEN iffD1])+
-apply (rule_tac y="(shiftL (Suc 0) x132 - schedContextStructSize) div refillSizeBytes" in order_trans)
-apply simp
-apply (clarsimp simp: minSchedContextBits_def)
-
-thm not_less
-  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
-  apply (drule_tac x="hd excaps" in bspec, fastforce)+
-  apply (clarsimp simp: valid_cap'_def)
-  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
-  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
-
-
-apply (clarsimp simp: ko_wp_at'_def)
-
-
-
-
-thm us_to_ticks_mono[simplified mono_def, rule_format]
-apply (rule us_to_ticks_mono[simplified mono_def, rule_format])
-apply (clarsimp simp: ARM.MAX_PERIOD_US_def maxPeriodUs_def not_le)
-apply (prop_tac "0xD693A400 = SchedContextDecls_H.maxPeriodUs")
-thm maxPeriodUs_def
-apply (clarsimp simp: ARM.MAX_PERIOD_US_def maxPeriodUs_def not_less)
-apply (clarsimp simp: ARM.MAX_PERIOD_US_def maxPeriodUs_def not_less)
-thm not_less[THEN iffD1]
-apply (frule not_less[THEN iffD1])+
-  apply (clarsimp simp: valid_cap'_def capSchedContextPtr_def)
-  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
-
-  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
-  apply (clarsimp simp: valid_cap'_def)
-  apply (drule_tac x="hd excaps" in bspec, fastforce dest: hd_in_set)+
-  apply (fastforce simp: pred_tcb_at'_def obj_at'_def)
+  using mono_def by blast
 
 lemma decode_sc_inv_corres:
   "list_all2 cap_relation excaps excaps' \<Longrightarrow>
